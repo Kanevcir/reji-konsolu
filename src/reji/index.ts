@@ -3,6 +3,7 @@
  */
 
 export { RejiConsole } from './components/RejiConsole';
+export { MissionControlDashboard } from './components/MissionControlDashboard';
 export { useRejiConsole } from './hooks/useRejiConsole';
 export { buildBlackoutPayload } from './safety';
 export { buildOutgoingPayload, createIdlePayload, mapTribunToZone } from './payload';

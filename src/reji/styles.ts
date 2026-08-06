@@ -2306,4 +2306,179 @@ export const rejiStyles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: '#22D3EE',
   },
+
+  /** V23.0 — Mission Control Cockpit */
+  cockpitRoot: {
+    flex: 1,
+    backgroundColor: '#03060C',
+  },
+  cockpitScroll: {
+    flex: 1,
+  },
+  cockpitContent: {
+    paddingHorizontal: 12,
+    gap: 12,
+    width: '100%',
+    maxWidth: 1680,
+    alignSelf: 'center',
+  },
+  cockpitTopBar: {
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+  },
+  cockpitBrand: {
+    color: '#E2E8F0',
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: 4,
+  },
+  cockpitBrandSub: {
+    color: '#64748B',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 2,
+  },
+  cockpitLockRibbon: {
+    marginTop: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#450A0A',
+    borderWidth: 1,
+    borderColor: '#F87171',
+  },
+  cockpitLockRibbonText: {
+    color: '#FECACA',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  cockpitLiveRibbon: {
+    marginTop: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#052e16',
+    borderWidth: 1,
+    borderColor: '#4ADE80',
+  },
+  cockpitLiveRibbonText: {
+    color: '#86EFAC',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  cockpitLockControl: {
+    marginTop: 8,
+    width: '100%',
+    maxWidth: 420,
+  },
+  cockpitHeaderSlot: {
+    gap: 10,
+  },
+  cockpitEmergencySlot: {
+    zIndex: 20,
+    elevation: 8,
+  },
+  cockpitEmergencyBtn: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 22,
+    borderRadius: 14,
+    backgroundColor: '#991B1B',
+    borderWidth: 3,
+    borderColor: '#F87171',
+    shadowColor: '#EF4444',
+    shadowOpacity: 0.55,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  cockpitEmergencyBtnActive: {
+    backgroundColor: '#450A0A',
+    borderColor: '#FCA5A5',
+  },
+  cockpitEmergencyText: {
+    color: '#FEF2F2',
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: 2,
+    textAlign: 'center',
+  },
+  cockpitGrid: {
+    gap: 10,
+  },
+  cockpitGridWide: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  cockpitGridStack: {
+    flexDirection: 'column',
+  },
+  cockpitColumn: {
+    flex: 1,
+    minWidth: 0,
+    gap: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    backgroundColor: '#070B14',
+    padding: 10,
+  },
+  cockpitColumnInfra: {
+    borderColor: 'rgba(250, 204, 21, 0.35)',
+  },
+  cockpitColumnShow: {
+    borderColor: 'rgba(74, 222, 128, 0.35)',
+    flex: 1.15,
+  },
+  cockpitColumnTrigger: {
+    borderColor: 'rgba(248, 113, 113, 0.35)',
+  },
+  cockpitColumnHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  cockpitColumnDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: '#64748B',
+  },
+  cockpitDotYellow: {
+    backgroundColor: '#FACC15',
+  },
+  cockpitDotGreen: {
+    backgroundColor: '#4ADE80',
+  },
+  cockpitDotRed: {
+    backgroundColor: '#F87171',
+  },
+  cockpitColumnTitle: {
+    flex: 1,
+    color: '#94A3B8',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+  },
+  cockpitColumnLockBadge: {
+    color: '#FCA5A5',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  cockpitColumnBody: {
+    gap: 10,
+  },
+  cockpitColumnLocked: {
+    opacity: 0.42,
+  },
+  cockpitFooter: {
+    gap: 10,
+  },
+  cockpitStackGap: {
+    gap: 10,
+  },
 });
