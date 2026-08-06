@@ -25,6 +25,13 @@ import { formatSure } from '../utils';
 import { ArtNetBridgePanel } from './ArtNetBridgePanel';
 import { MacroTimelinePanel } from './MacroTimelinePanel';
 import { DiagnosticsTerminal } from './DiagnosticsTerminal';
+import { SpatialZoneMap } from './SpatialZoneMap';
+import { SwarmMeshPanel } from './SwarmMeshPanel';
+import { VirtualCrowdPanel } from './VirtualCrowdPanel';
+import { RedundancyPanel } from './RedundancyPanel';
+import { ChoreographyPanel } from './ChoreographyPanel';
+import { MidiHardwarePanel } from './MidiHardwarePanel';
+import { ShowFileBar } from './ShowFileBar';
 import { ConsoleLockOverlay } from './ConsoleLockOverlay';
 import { BlackoutBanner } from './BlackoutBanner';
 import { NetworkConfigPanel } from './NetworkConfigPanel';
@@ -120,6 +127,36 @@ export function RejiConsole() {
     blackboxEventCount,
     blackboxTerminalLogs,
     handleExportMatchReport,
+    handleZoneToggle,
+    handleZoneSelectAll,
+    handleZoneClearAll,
+    activeZones,
+    zoneMask,
+    zoneEditEnabled,
+    isSwarmMeshActive,
+    estimatedMeshNodes,
+    swarmEngageEnabled,
+    handleSwarmToggle,
+    consoleRole,
+    peerStatus,
+    handlePromoteToMaster,
+    handleSwitchToSlave,
+    handleStandaloneConsole,
+    matrixCommand,
+    handleMatrixDraftChange,
+    handleMatrixEngage,
+    handleMatrixDisengage,
+    midiStatus,
+    handleMidiConnect,
+    handleMidiBeginLearn,
+    handleMidiCancelLearn,
+    handleMidiClearBinding,
+    handleMidiResetBindings,
+    timecodeStatus,
+    macroSyncMode,
+    handleSaveShowfile,
+    handleLoadShowfile,
+    handleToggleMacroSyncMode,
   } = consoleState;
 
   const linkStatus = normalizeLinkStatus(socketStatus);
@@ -157,6 +194,13 @@ export function RejiConsole() {
         {/* Üst durum + sanal stadyum + sayaç */}
         <View style={styles.statusSection}>
           <Text style={styles.title}>REJİ CANLI SİSTEMİ</Text>
+
+          <ShowFileBar
+            onSaveShow={handleSaveShowfile}
+            onLoadShow={handleLoadShowfile}
+            macroSyncMode={macroSyncMode}
+            onToggleMacroSyncMode={handleToggleMacroSyncMode}
+          />
 
           <View style={styles.headerSecurityRow}>
             <TouchableOpacity
@@ -214,6 +258,47 @@ export function RejiConsole() {
             selectedTribun={selectedTribun}
             effectiveBpm={effectiveBpm}
             isBlackout={isBlackout}
+          />
+
+          <SpatialZoneMap
+            activeZones={activeZones}
+            zoneMask={zoneMask}
+            readOnly={!zoneEditEnabled}
+            onToggleZone={handleZoneToggle}
+            onSelectAll={handleZoneSelectAll}
+            onClearAll={handleZoneClearAll}
+          />
+
+          <SwarmMeshPanel
+            isSwarmMeshActive={isSwarmMeshActive}
+            estimatedMeshNodes={estimatedMeshNodes}
+            disabled={!swarmEngageEnabled && !isSwarmMeshActive}
+            onToggle={handleSwarmToggle}
+          />
+
+          <RedundancyPanel
+            consoleRole={consoleRole}
+            peerStatus={peerStatus}
+            onPromoteToMaster={handlePromoteToMaster}
+            onSwitchToSlave={handleSwitchToSlave}
+            onStandalone={handleStandaloneConsole}
+          />
+
+          <ChoreographyPanel
+            matrix={matrixCommand}
+            disabled={isBlackout || isConsoleLocked}
+            onChangeDraft={handleMatrixDraftChange}
+            onEngage={handleMatrixEngage}
+            onDisengage={handleMatrixDisengage}
+          />
+
+          <MidiHardwarePanel
+            status={midiStatus}
+            onConnect={handleMidiConnect}
+            onBeginLearn={handleMidiBeginLearn}
+            onCancelLearn={handleMidiCancelLearn}
+            onClearBinding={handleMidiClearBinding}
+            onResetBindings={handleMidiResetBindings}
           />
 
           <View style={[styles.signalBox, { borderColor: signalBorder }]}>
@@ -516,7 +601,14 @@ export function RejiConsole() {
           artNetStats={artNetStats}
           securityLock={securityLock}
           offlineQueuePending={offlineQueuePending}
+          isSwarmMeshActive={isSwarmMeshActive}
+          estimatedMeshNodes={estimatedMeshNodes}
+          consoleRole={consoleRole}
+          peerStatus={peerStatus}
+          timecodeStatus={timecodeStatus}
         />
+
+        <VirtualCrowdPanel payload={lastPayload} />
 
         <DiagnosticsTerminal
           logs={blackboxTerminalLogs}

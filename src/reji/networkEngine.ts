@@ -43,6 +43,8 @@ export type NetworkSendResult = {
 export type NetworkEngineListener = {
   onStatus?: (status: NetworkLinkStatus, detail?: string) => void;
   onAck?: (raw: string) => void;
+  /** V19 — ham peer mesajları (HEARTBEAT / SYNC_STATE vb.). */
+  onMessage?: (raw: string) => void;
   onError?: (message: string) => void;
 };
 
@@ -311,6 +313,18 @@ export class NetworkEngine {
       socket.onmessage = (event) => {
         try {
           const raw = typeof event.data === 'string' ? event.data : String(event.data);
+          try {
+            this.listeners.onMessage?.(raw);
+          } catch {
+            // ignore
+          }
+          // Redundancy paketleri ACK sayılmaz
+          if (
+            raw.includes('"HEARTBEAT"') ||
+            raw.includes('"SYNC_STATE"')
+          ) {
+            return;
+          }
           this.listeners.onAck?.(raw);
         } catch {
           // ignore parse
@@ -402,9 +416,15 @@ export class NetworkEngine {
    * FALLBACK_UDP → multicast datagram bus
    */
   async send(payload: OutgoingPayload): Promise<NetworkSendResult> {
-    try {
-      const body = JSON.stringify(payload);
+    return this.sendRaw(JSON.stringify(payload));
+  }
 
+  /**
+   * V19 — ham JSON/string paket (HEARTBEAT / SYNC_STATE).
+   * Mevcut send() ile aynı transport kurallarını kullanır.
+   */
+  async sendRaw(body: string): Promise<NetworkSendResult> {
+    try {
       if (this.status === 'CONNECTED' && this.ws?.readyState === WebSocket.OPEN) {
         try {
           this.ws.send(body);
@@ -412,7 +432,6 @@ export class NetworkEngine {
         } catch (err) {
           const message = err instanceof Error ? err.message : 'ws send failed';
           this.lastError = message;
-          // Anlık send hatası → UDP’ye düş
           this.enterUdpFallback(message);
           const udpOk = await this.udp.sendDatagram(body);
           return {
@@ -432,7 +451,6 @@ export class NetworkEngine {
         };
       }
 
-      // CONNECTING / DISCONNECTED — kuyruk yok, başarısız
       return {
         ok: false,
         transport: 'offline',

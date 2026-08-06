@@ -106,6 +106,105 @@ export type {
   SessionTelemetrySummary,
 } from './blackbox';
 export {
+  ZONE_BIT,
+  SPATIAL_ZONES,
+  DEFAULT_ACTIVE_ZONES,
+  DEFAULT_ZONE_MASK,
+  computeZoneMask,
+  zonesFromMask,
+  toggleActiveZone,
+  formatZoneLabel,
+  formatZoneMaskBinary,
+  deviceMatchesZoneMask,
+  buildZoneChangedMessage,
+  canEditZones,
+} from './zoneManager';
+export type { SpatialZoneId } from './zoneManager';
+export {
+  canEngageSwarm,
+  formatMeshStatusLabel,
+  buildSwarmEngagedMessage,
+  buildSwarmDisengagedMessage,
+  nextEstimatedMeshNodes,
+  initialEstimatedMeshNodes,
+  SWARM_MESH_NODES_IDLE,
+} from './swarmCommander';
+export type { SwarmMeshStatus } from './swarmCommander';
+export {
+  VIRTUAL_CROWD_SIZE,
+  VIRTUAL_CROWD_COLS,
+  VIRTUAL_CROWD_ROWS,
+  VirtualCrowdEngine,
+  formatCrowdLatency,
+} from './virtualCrowd';
+export type {
+  VirtualNode,
+  CrowdSimMetrics,
+  CrowdSimSnapshot,
+} from './virtualCrowd';
+export {
+  HEARTBEAT_INTERVAL_MS,
+  MASTER_TIMEOUT_MS,
+  FAILOVER_BLACKBOX_MSG,
+  RedundancyEngine,
+  createConsoleId,
+  formatConsoleRoleBadge,
+  isRedundancyPacket,
+} from './redundancyEngine';
+export type {
+  ConsoleRole,
+  PeerStatus,
+  RedundancySyncState,
+} from './redundancyEngine';
+export {
+  PIXEL_GRID_W,
+  PIXEL_GRID_H,
+  PREVIEW_GRID,
+  MATRIX_EFFECTS,
+  buildMatrixCommand,
+  buildMatrixEngagedMessage,
+  createIdleMatrixCommand,
+  evaluatePixel,
+  fillPreviewBuffer,
+  formatMatrixEffectLabel,
+} from './pixelMapper';
+export type { MatrixCommand, MatrixEffect } from './pixelMapper';
+export {
+  MIDI_LEARN_TARGETS,
+  DEFAULT_MIDI_BINDINGS,
+  MidiControllerEngine,
+  buildMidiTriggeredMessage,
+  ccToMatrixSpeed,
+  ccToMatrixIntensity,
+  formatMidiTargetLabel,
+  formatMidiBinding,
+  isMidiAllowedWhenLocked,
+  isMidiSupported,
+} from './midiController';
+export type {
+  MidiTarget,
+  MidiBinding,
+  MidiControllerStatus,
+} from './midiController';
+export {
+  createTimecodeStatus,
+  formatSmpte,
+  smpteToMs,
+  msToSmpte,
+  TimecodeEngine,
+  DEFAULT_SMPTE_FPS,
+} from './timecode';
+export type { SmpteTime, TimecodeStatus } from './timecode';
+export {
+  buildPulseShowfile,
+  parsePulseShowfile,
+  serializePulseShowfile,
+  suggestPulseFileName,
+  buildShowfileLoadedMessage,
+  PULSE_SHOW_EXT,
+} from './showfileManager';
+export type { PulseShowfile } from './showfileManager';
+export {
   buildWebSocketUrl,
   DEFAULT_NETWORK_CONFIG,
   getNetworkEngine,

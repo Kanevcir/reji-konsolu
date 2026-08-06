@@ -13,13 +13,26 @@ export type MacroActionType =
   | 'SCENARIO'
   | 'BPM'
   | 'PAUSE_TOGGLE'
-  | 'AUDIO_TOGGLE';
+  | 'AUDIO_TOGGLE'
+  /** V16.0 — uzamsal bölge bitmask değişimi */
+  | 'ZONE'
+  /** V17.0 — BLE swarm mesh aç/kapa */
+  | 'SWARM_TOGGLE'
+  /** V20.0 — pixel matrix engage/stop */
+  | 'MATRIX';
 
 export type MacroEventPayload = {
   actionId?: RejiMode | 'reset';
   tribunId?: TribunId;
   scenarioId?: ScenarioId;
   bpm?: BpmOption;
+  /** V16 — 4-bit zoneMask (0–15). */
+  zoneMask?: number;
+  /** V17 — hedef swarm durumu. */
+  swarmActive?: boolean;
+  /** V20 — matrix engaged flag + effect adı. */
+  matrixEngaged?: boolean;
+  matrixEffect?: string;
 };
 
 /** Tek zaman çizelgesi olayı. */
@@ -36,6 +49,12 @@ export type MacroSequence = {
   recordedAt: number;
   durationMs: number;
   events: MacroEvent[];
+  /**
+   * V22 — oynatma senkronu.
+   * wall: PTP/setTimeout (varsayılan)
+   * smpte: mutlak / cue-relative SMPTE timecode
+   */
+  syncMode?: 'wall' | 'smpte';
 };
 
 export type MacroPlaybackProgress = {
@@ -239,6 +258,86 @@ export class TimelineSequencer {
         }
       }, durationMs + 40);
       this.timers.push(endTimer);
+
+      return true;
+    } catch {
+      this.abortPlayback();
+      handlers.onAbort?.();
+      return false;
+    }
+  }
+
+  /**
+   * V22 — SMPTE Timecode Trigger.
+   * Event offsetMs, cue başlangıcına göre SMPTE ms cinsinden yorumlanır.
+   * getTimecodeMs: mutlak SMPTE → ms (fps bilinciyle).
+   */
+  playOnTimecode(
+    sequence: MacroSequence,
+    handlers: {
+      getTimecodeMs: () => number;
+      onEvent: (event: MacroEvent) => void;
+      onProgress?: (progress: MacroPlaybackProgress) => void;
+      onComplete?: () => void;
+      onAbort?: () => void;
+    },
+  ): boolean {
+    try {
+      this.abortPlayback();
+      if (!sequence.events.length) return false;
+
+      this.playing = true;
+      this.recording = false;
+      const sorted = [...sequence.events].sort((a, b) => a.offsetMs - b.offsetMs);
+      const durationMs =
+        sequence.durationMs ||
+        Math.max(...sorted.map((e) => e.offsetMs), 0);
+      this.playDurationMs = durationMs;
+
+      const cueStartMs = handlers.getTimecodeMs();
+      let nextIndex = 0;
+      const fired = new Set<number>();
+
+      this.progressTimer = setInterval(() => {
+        try {
+          if (!this.playing) return;
+          const nowTc = handlers.getTimecodeMs();
+          const elapsedMs = Math.max(0, nowTc - cueStartMs);
+
+          while (nextIndex < sorted.length) {
+            const event = sorted[nextIndex]!;
+            if (elapsedMs + 0.5 < event.offsetMs) break;
+            if (!fired.has(nextIndex)) {
+              fired.add(nextIndex);
+              try {
+                handlers.onEvent(event);
+              } catch {
+                // ignore
+              }
+            }
+            nextIndex += 1;
+          }
+
+          handlers.onProgress?.({
+            progress: computeMacroProgress(elapsedMs, this.playDurationMs),
+            elapsedMs,
+            durationMs: this.playDurationMs,
+          });
+
+          if (elapsedMs >= this.playDurationMs && nextIndex >= sorted.length) {
+            this.clearTimers();
+            this.playing = false;
+            handlers.onProgress?.({
+              progress: 1,
+              elapsedMs: this.playDurationMs,
+              durationMs: this.playDurationMs,
+            });
+            handlers.onComplete?.();
+          }
+        } catch {
+          // tick hatası oynatmayı bozmaz
+        }
+      }, 40);
 
       return true;
     } catch {

@@ -3,6 +3,8 @@
  * Tüm state makinesi ve UI seçimleri bu tipler üzerinden ilerler.
  */
 
+import type { MatrixCommand } from './pixelMapper';
+
 /** Ana çalışma modu: bekleme, canlı koreografi veya ritim senkronu. */
 export type RejiMode = 'idle' | 'live' | 'sync';
 
@@ -92,6 +94,21 @@ export type OutgoingPayload = {
   targetZone: OutgoingTargetZone;
   bpm: number;
   status: OutgoingStatus;
+  /**
+   * V16.0 — uzamsal bölge bitmask (NORTH=1 SOUTH=2 EAST=4 WEST=8 ALL=15).
+   * Offline cihazlar GPS/QR kodunu bu maske ile karşılaştırır.
+   */
+  zoneMask: number;
+  /**
+   * V17.0 — BLE swarm mesh protokolü.
+   * true iken saha cihazları hücresel kopsa bile BLE hop ile komutu yayar.
+   */
+  swarmProtocol: boolean;
+  /**
+   * V20.0 — sıkıştırılmış piksel koreografi vektörü (MatrixCommand).
+   * null = matris kapalı; cihazlar formülü kendi (x,y)+PTP t0 ile çözer.
+   */
+  matrix: MatrixCommand | null;
 };
 
 /** V2.1 / V9.0 — WebSocket / hibrit ağ bağlantı durumu. */

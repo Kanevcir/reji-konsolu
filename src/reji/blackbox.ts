@@ -15,6 +15,12 @@ export type BlackboxCategory =
   | 'AUTH'
   | 'MACRO'
   | 'OFFLINE_QUEUE'
+  | 'ZONE'
+  | 'SWARM'
+  | 'FAILOVER'
+  | 'MATRIX'
+  | 'MIDI'
+  | 'SHOWFILE'
   | 'SYSTEM';
 
 /** Tek karakutu kaydı. */
@@ -85,6 +91,30 @@ export function classifyBlackboxMessage(message: string): BlackboxCategory | nul
     }
 
     if (m.includes('MACRO PLAY')) return 'MACRO';
+
+    if (m.includes('ZONE_CHANGED') || m.includes('ZONE MASK')) {
+      return 'ZONE';
+    }
+
+    if (m.includes('SWARM_MESH')) {
+      return 'SWARM';
+    }
+
+    if (m.includes('FAILOVER_TRIGGERED') || m.includes('FAILOVER')) {
+      return 'FAILOVER';
+    }
+
+    if (m.includes('MATRIX_ENGAGED') || m.includes('MATRIX_DISENGAGED')) {
+      return 'MATRIX';
+    }
+
+    if (m.includes('MIDI_TRIGGERED') || m.includes('MIDI LEARN')) {
+      return 'MIDI';
+    }
+
+    if (m.includes('SHOWFILE_LOADED') || m.includes('SHOWFILE_SAVED')) {
+      return 'SHOWFILE';
+    }
 
     if (m.includes('OFFLINE QUEUE FLUSH') || m.includes('OFFLINE QUEUE PURGE')) {
       return 'OFFLINE_QUEUE';

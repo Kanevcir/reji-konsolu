@@ -10,6 +10,13 @@
  * V13.0 — Offline Queue & Event Replay Engine.
  * V14.0 — Timeline Sequencer & Macro Playback.
  * V15.0 — Diagnostic Blackbox & Session Exporter.
+ * V16.0 — Spatial Grid & Zone Bitmasking.
+ * V17.0 — Swarm Mesh Commander (BLE).
+ * V18.0 — Virtual Crowd Stress Simulator (panel-local).
+ * V19.0 — Hot-Standby Dual-Console Failover.
+ * V20.0 — Stadium Pixel Mapper & Matrix Engine.
+ * V21.0 — MIDI / Tactile Hardware Mapping.
+ * V22.0 — Showfile (.pulse) & SMPTE Timecode Sync.
  *
  * Bu hook tüm konsol state makinesini, timer interval’lerini ve
  * aksiyon handler’larını tek yerde toplar. UI katmanı yalnızca
@@ -82,6 +89,60 @@ import {
   type BlackboxEntry,
 } from '../blackbox';
 import {
+  buildZoneChangedMessage,
+  canEditZones,
+  computeZoneMask,
+  DEFAULT_ACTIVE_ZONES,
+  formatZoneLabel,
+  toggleActiveZone,
+  zonesFromMask,
+  type SpatialZoneId,
+} from '../zoneManager';
+import {
+  buildSwarmDisengagedMessage,
+  buildSwarmEngagedMessage,
+  canEngageSwarm,
+  initialEstimatedMeshNodes,
+  nextEstimatedMeshNodes,
+  SWARM_MESH_NODES_IDLE,
+} from '../swarmCommander';
+import {
+  FAILOVER_BLACKBOX_MSG,
+  RedundancyEngine,
+  type ConsoleRole,
+  type PeerStatus,
+  type RedundancySyncState,
+} from '../redundancyEngine';
+import {
+  buildMatrixCommand,
+  buildMatrixEngagedMessage,
+  createIdleMatrixCommand,
+  MATRIX_EFFECTS,
+  type MatrixCommand,
+  type MatrixEffect,
+} from '../pixelMapper';
+import {
+  buildMidiTriggeredMessage,
+  ccToMatrixIntensity,
+  ccToMatrixSpeed,
+  isMidiAllowedWhenLocked,
+  MidiControllerEngine,
+  type MidiControllerStatus,
+  type MidiTarget,
+} from '../midiController';
+import {
+  createTimecodeStatus,
+  TimecodeEngine,
+  type TimecodeStatus,
+} from '../timecode';
+import {
+  buildPulseShowfile,
+  buildShowfileLoadedMessage,
+  parsePulseShowfile,
+  serializePulseShowfile,
+  suggestPulseFileName,
+} from '../showfileManager';
+import {
   canManageLock,
   canOperateCritical,
   DEFAULT_SECURITY_LOCK,
@@ -131,6 +192,12 @@ type PayloadOverrides = {
   bpm?: number;
   timerHasTime?: boolean;
   isPaused?: boolean;
+  /** V16 — uzamsal bitmask override */
+  zoneMask?: number;
+  /** V17 — BLE swarm bayrağı override */
+  swarmProtocol?: boolean;
+  /** V20 — matrix command override */
+  matrix?: MatrixCommand | null;
 };
 
 /**
@@ -233,6 +300,29 @@ export function useRejiConsole() {
     events: [],
   });
   const [macroProgress, setMacroProgress] = useState(0);
+  /** V16.0 — uzamsal aktif bölgeler (çoklu seçim → zoneMask). */
+  const [activeZones, setActiveZones] = useState<SpatialZoneId[]>([
+    ...DEFAULT_ACTIVE_ZONES,
+  ]);
+  /** V17.0 — BLE swarm mesh */
+  const [isSwarmMeshActive, setIsSwarmMeshActive] = useState(false);
+  const [estimatedMeshNodes, setEstimatedMeshNodes] = useState(SWARM_MESH_NODES_IDLE);
+  /** V19.0 — hot-standby role / peer */
+  const [consoleRole, setConsoleRole] = useState<ConsoleRole>('STANDALONE');
+  const [peerStatus, setPeerStatus] = useState<PeerStatus>('DISCONNECTED');
+  /** V20.0 — pixel matrix koreografi komutu (draft + live). */
+  const [matrixCommand, setMatrixCommand] = useState<MatrixCommand>(() =>
+    createIdleMatrixCommand(),
+  );
+  /** V21.0 — MIDI hardware status */
+  const [midiStatus, setMidiStatus] = useState<MidiControllerStatus>(() =>
+    new MidiControllerEngine().getStatus(),
+  );
+  /** V22.0 — SMPTE / MTC + show sync mode */
+  const [timecodeStatus, setTimecodeStatus] = useState<TimecodeStatus>(() =>
+    createTimecodeStatus(),
+  );
+  const [macroSyncMode, setMacroSyncMode] = useState<'wall' | 'smpte'>('wall');
   /** V15.0 — karakutu rolling log (max 1000, PTP ts). */
   const [blackboxLogs, setBlackboxLogs] = useState<BlackboxEntry[]>([]);
   /** Log kimliği için artan sayaç (render’ı tetiklemez). */
@@ -257,7 +347,18 @@ export function useRejiConsole() {
   const isPlayingMacroRef = useRef(false);
   const macroDispatchRef = useRef<(event: MacroEvent) => void>(() => {});
   /** V15.0 — industrial blackbox engine. */
+  const redundancyRef = useRef(new RedundancyEngine());
   const blackboxRef = useRef(new BlackboxEngine());
+  const syncSnapshotRef = useRef<RedundancySyncState | null>(null);
+  const matrixCommandRef = useRef(matrixCommand);
+  matrixCommandRef.current = matrixCommand;
+  const midiRef = useRef(new MidiControllerEngine());
+  const midiDispatchRef = useRef<
+    (target: MidiTarget, meta?: { ccValue?: number }) => void
+  >(() => {});
+  const timecodeRef = useRef(new TimecodeEngine());
+  const isConsoleLockedRef = useRef(isConsoleLocked);
+  isConsoleLockedRef.current = isConsoleLocked;
   /** V11 — 30 FPS stream'in okuduğu anlık frame girdileri. */
   const artNetFrameRef = useRef({
     beat: 0,
@@ -304,6 +405,16 @@ export function useRejiConsole() {
   const criticalEnabled = canOperateCritical(operatorRole, isConsoleLocked);
   const macroRecordEnabled = canRecordMacro(isConsoleLocked, isBlackout);
   const macroPlayEnabled = canPlayMacro(operatorRole, isConsoleLocked, isBlackout);
+  const zoneMask = computeZoneMask(activeZones);
+  const zoneEditEnabled = canEditZones(isConsoleLocked, isBlackout);
+  const swarmEngageEnabled = canEngageSwarm(isConsoleLocked, isBlackout);
+
+  syncSnapshotRef.current = {
+    zoneMask,
+    bpm,
+    macro: macroSequence,
+    payload: lastPayloadRef.current,
+  };
 
   const recordMacroEvent = (
     type: MacroEvent['type'],
@@ -522,6 +633,14 @@ export function useRejiConsole() {
       bpm: overrides.bpm ?? (isListeningAudio ? detectedBpm : bpm),
       timerHasTime: overrides.timerHasTime ?? timerHasTime,
       isPaused: overrides.isPaused ?? isPaused,
+      zoneMask: overrides.zoneMask ?? zoneMask,
+      swarmProtocol: overrides.swarmProtocol ?? isSwarmMeshActive,
+      matrix:
+        overrides.matrix !== undefined
+          ? overrides.matrix
+          : matrixCommand.engaged
+            ? matrixCommand
+            : null,
     });
     lastPayloadRef.current = payload;
     setLastPayload(payload);
@@ -618,6 +737,14 @@ export function useRejiConsole() {
         clearAckTimeout();
         setDeliveryStatus('ACK_RECEIVED');
         pushLog('ACK_RECEIVED (server)');
+      },
+      onMessage: (raw: string) => {
+        if (cancelled) return;
+        try {
+          redundancyRef.current.handleIncoming(raw);
+        } catch {
+          // ignore
+        }
       },
       onError: (message) => {
         if (cancelled) return;
@@ -877,6 +1004,120 @@ export function useRejiConsole() {
   }, [telemetryStats, isBlackout]);
 
   /**
+   * Effect #V17 — swarm mesh düğüm tahmini (aktifken).
+   */
+  useEffect(() => {
+    if (!isSwarmMeshActive || isBlackout) return;
+    const intervalId = setInterval(() => {
+      try {
+        setEstimatedMeshNodes((prev) => nextEstimatedMeshNodes(prev, true));
+      } catch {
+        // ignore
+      }
+    }, 1600);
+    return () => clearInterval(intervalId);
+  }, [isSwarmMeshActive, isBlackout]);
+
+  /**
+   * Effect #V19 — Hot-Standby heartbeat (500ms) + failover.
+   */
+  useEffect(() => {
+    const engine = redundancyRef.current;
+    const coerceBpm = (n: number): BpmOption => {
+      if (n >= 140) return 140;
+      if (n <= 100) return 100;
+      return 120;
+    };
+
+    engine.start({
+      sendRaw: (body) => {
+        void engineRef.current?.sendRaw(body);
+      },
+      getSyncState: () => {
+        return (
+          syncSnapshotRef.current ?? {
+            zoneMask: 0b1111,
+            bpm: DEFAULT_BPM,
+            macro: { ...EMPTY_MACRO, events: [] },
+            payload: lastPayloadRef.current,
+          }
+        );
+      },
+      onRoleChange: (role, reason) => {
+        setConsoleRole(role);
+        if (reason === 'auto-promote') {
+          pushLog(FAILOVER_BLACKBOX_MSG);
+          setBildirim('FAILOVER — SLAVE → MASTER');
+          void triggerImpact('heavy');
+        } else {
+          pushLog('CONSOLE ROLE → ' + role + ' (' + reason + ')');
+        }
+      },
+      onPeerStatus: (status) => {
+        setPeerStatus(status);
+        pushLog(status === 'CONNECTED' ? 'PEER CONNECTED' : 'PEER DISCONNECTED');
+      },
+      onSyncState: (sync: RedundancySyncState) => {
+        try {
+          setActiveZones(zonesFromMask(sync.zoneMask));
+          setBpm(coerceBpm(sync.bpm));
+          setMacroSequence({
+            ...sync.macro,
+            events: (sync.macro.events ?? []).map((e) => ({
+              ...e,
+              payload: { ...e.payload },
+            })),
+          });
+          lastPayloadRef.current = sync.payload;
+          setLastPayload(sync.payload);
+        } catch {
+          pushLog('SYNC STATE APPLY ERROR');
+        }
+      },
+    });
+
+    return () => engine.stop();
+  }, []);
+
+  /**
+   * Effect #V21 — Web MIDI engine (tek mount; dispatch ref ile).
+   */
+  useEffect(() => {
+    const engine = midiRef.current;
+    void engine.start({
+      onStatus: (status) => setMidiStatus(status),
+      onAction: (target, meta) => midiDispatchRef.current(target, meta),
+      onLearnComplete: (binding) => {
+        pushLog(
+          'MIDI LEARN · ' +
+            binding.target +
+            ' ← ' +
+            binding.kind.toUpperCase() +
+            ' ' +
+            binding.number,
+        );
+        setBildirim('MIDI LEARN OK · ' + binding.target);
+      },
+      onRawMidi: (data) => {
+        try {
+          timecodeRef.current.handleMidiBytes(data);
+        } catch {
+          // ignore
+        }
+      },
+    });
+
+    timecodeRef.current.start({
+      onUpdate: (status) => setTimecodeStatus(status),
+    });
+
+    return () => {
+      engine.stop();
+      timecodeRef.current.stop();
+    };
+  }, []);
+
+  /**
    * Effect #V4 — Canlı ses dinleme / AUTO BPM simülasyonu.
    * isListeningAudio iken 800ms’de bir BPM (110–135) ve mic dB güncellenir.
    */
@@ -1059,6 +1300,330 @@ export function useRejiConsole() {
       timerHasTime: false,
       isPaused: false,
     });
+  };
+
+
+
+  /** V17 — BLE swarm mesh aç/kapa (macro + blackbox + payload bayrağı). */
+  const applySwarmMesh = (next: boolean) => {
+    try {
+      if (next && !swarmEngageEnabled && !isPlayingMacroRef.current) {
+        setBildirim('Swarm kilidi / blackout');
+        pushLog('SWARM ENGAGE DENIED');
+        void triggerErrorHaptic();
+        return;
+      }
+      if (next && isBlackout) {
+        setBildirim('Blackout — swarm engellendi');
+        return;
+      }
+      const nodes = next ? initialEstimatedMeshNodes() : SWARM_MESH_NODES_IDLE;
+      setIsSwarmMeshActive(next);
+      setEstimatedMeshNodes(nodes);
+      recordMacroEvent('SWARM_TOGGLE', { swarmActive: next });
+      if (next) {
+        pushLog(buildSwarmEngagedMessage(nodes));
+        setBildirim('SWARM MESH ENGAGED · BLE hop');
+      } else {
+        pushLog(buildSwarmDisengagedMessage());
+        setBildirim('SWARM MESH DISENGAGED');
+      }
+      publishPayload(timerHasTime && !isPaused ? 'START_SHOW' : isPaused ? 'PAUSE' : 'RESET', {
+        swarmProtocol: next,
+      });
+      void triggerImpact(next ? 'heavy' : 'medium');
+    } catch {
+      pushLog('SWARM TOGGLE ERROR');
+    }
+  };
+
+
+
+  const handleMatrixDraftChange = (next: MatrixCommand) => {
+    try {
+      setMatrixCommand((prev) => ({
+        ...next,
+        engaged: prev.engaged,
+        t0: prev.engaged ? prev.t0 : next.t0,
+      }));
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleMatrixEngage = () => {
+    try {
+      if (isBlackout || isConsoleLocked) {
+        setBildirim('Matrix kilidi / blackout');
+        void triggerErrorHaptic();
+        return;
+      }
+      const cmd = buildMatrixCommand({
+        effect: matrixCommand.effect,
+        speed: matrixCommand.speed,
+        hue: matrixCommand.hue,
+        intensity: matrixCommand.intensity,
+        angle: matrixCommand.angle,
+        patternId: matrixCommand.patternId,
+        engaged: true,
+      });
+      setMatrixCommand(cmd);
+      recordMacroEvent('MATRIX', {
+        matrixEngaged: true,
+        matrixEffect: cmd.effect,
+      });
+      pushLog(buildMatrixEngagedMessage(cmd.effect));
+      setBildirim('MATRIX ENGAGED · ' + cmd.effect);
+      publishPayload(timerHasTime && !isPaused ? 'START_SHOW' : isPaused ? 'PAUSE' : 'RESET', {
+        matrix: cmd,
+      });
+      void triggerImpact('heavy');
+    } catch {
+      pushLog('MATRIX ENGAGE ERROR');
+    }
+  };
+
+
+  const handleMidiConnect = () => {
+    void midiRef.current.start({
+      onStatus: (status) => setMidiStatus(status),
+      onAction: (target, meta) => midiDispatchRef.current(target, meta),
+      onLearnComplete: (binding) => {
+        pushLog(
+          'MIDI LEARN · ' +
+            binding.target +
+            ' ← ' +
+            binding.kind.toUpperCase() +
+            ' ' +
+            binding.number,
+        );
+        setBildirim('MIDI LEARN OK · ' + binding.target);
+      },
+      onRawMidi: (data) => {
+        try {
+          timecodeRef.current.handleMidiBytes(data);
+        } catch {
+          // ignore
+        }
+      },
+    });
+  };
+
+  const handleMidiBeginLearn = (target: MidiTarget) => {
+    midiRef.current.beginLearn(target);
+    setMidiStatus(midiRef.current.getStatus());
+    setBildirim('MIDI LEARN · ' + target);
+  };
+
+  const handleMidiCancelLearn = () => {
+    midiRef.current.cancelLearn();
+    setMidiStatus(midiRef.current.getStatus());
+  };
+
+  const handleMidiClearBinding = (target: MidiTarget) => {
+    midiRef.current.clearBinding(target);
+    setMidiStatus(midiRef.current.getStatus());
+  };
+
+  const handleMidiResetBindings = () => {
+    midiRef.current.resetBindings();
+    setMidiStatus(midiRef.current.getStatus());
+    pushLog('MIDI MAPS RESET');
+  };
+
+
+  const handleToggleMacroSyncMode = () => {
+    setMacroSyncMode((prev) => {
+      const next = prev === 'wall' ? 'smpte' : 'wall';
+      setBildirim(next === 'smpte' ? 'Makro sync → SMPTE' : 'Makro sync → PTP');
+      return next;
+    });
+  };
+
+  const handleSaveShowfile = async () => {
+    try {
+      const show = buildPulseShowfile({
+        name: 'Reji Show',
+        macro: macroSequence,
+        midiBindings: midiRef.current.getBindings(),
+        matrix: matrixCommand,
+        activeZones,
+        bpm,
+      });
+      const text = serializePulseShowfile(show);
+      await Clipboard.setStringAsync(text);
+      const fileName = suggestPulseFileName(show);
+      pushLog('SHOWFILE_SAVED: ' + fileName);
+      setBildirim('Show kaydedildi · ' + fileName + ' (pano)');
+      void triggerImpact('medium');
+    } catch {
+      setBildirim('Show kaydedilemedi');
+      pushLog('SHOWFILE SAVE ERROR');
+    }
+  };
+
+  const handleLoadShowfile = async () => {
+    try {
+      const raw = await Clipboard.getStringAsync();
+      const parsed = parsePulseShowfile(raw);
+      if (!parsed.ok) {
+        setBildirim(parsed.error);
+        pushLog('SHOWFILE IMPORT INVALID');
+        void triggerErrorHaptic();
+        return;
+      }
+      const { show, fileName } = parsed;
+      setMacroSequence({
+        ...show.macro,
+        events: show.macro.events.map((e) => ({
+          ...e,
+          payload: { ...e.payload },
+        })),
+      });
+      setActiveZones(show.activeZones);
+      setMatrixCommand({ ...show.matrix, engaged: false });
+      if (show.bpm === 100 || show.bpm === 120 || show.bpm === 140) {
+        setBpm(show.bpm);
+      }
+      midiRef.current.setBindings(show.midiBindings);
+      setMidiStatus(midiRef.current.getStatus());
+      pushLog(buildShowfileLoadedMessage(fileName));
+      setBildirim('Show yüklendi · ' + show.name);
+      void triggerImpact('heavy');
+    } catch {
+      setBildirim('Show yüklenemedi');
+      pushLog('SHOWFILE LOAD ERROR');
+    }
+  };
+
+
+  const handleMatrixDisengage = () => {
+    try {
+      const cmd = { ...matrixCommand, engaged: false };
+      setMatrixCommand(cmd);
+      recordMacroEvent('MATRIX', {
+        matrixEngaged: false,
+        matrixEffect: cmd.effect,
+      });
+      pushLog('MATRIX_DISENGAGED');
+      setBildirim('MATRIX STOP');
+      publishPayload(timerHasTime && !isPaused ? 'START_SHOW' : isPaused ? 'PAUSE' : 'RESET', {
+        matrix: null,
+      });
+    } catch {
+      // ignore
+    }
+  };
+
+  const applyMatrixFromMacro = (engaged: boolean, effectName?: string) => {
+    try {
+      if (engaged) {
+        const effect = (
+          (MATRIX_EFFECTS as readonly string[]).includes(effectName ?? '')
+            ? (effectName as MatrixEffect)
+            : matrixCommand.effect
+        );
+        const cmd = buildMatrixCommand({
+          effect,
+          speed: matrixCommand.speed,
+          hue: matrixCommand.hue,
+          intensity: matrixCommand.intensity,
+          angle: matrixCommand.angle,
+          patternId: matrixCommand.patternId,
+          engaged: true,
+        });
+        setMatrixCommand(cmd);
+        pushLog(buildMatrixEngagedMessage(cmd.effect));
+        publishPayload(timerHasTime && !isPaused ? 'START_SHOW' : isPaused ? 'PAUSE' : 'RESET', {
+          matrix: cmd,
+        });
+      } else {
+        handleMatrixDisengage();
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const handlePromoteToMaster = () => {
+    try {
+      redundancyRef.current.promoteToMaster('manual');
+      setBildirim('PROMOTED TO MASTER');
+      void triggerImpact('medium');
+    } catch {
+      pushLog('PROMOTE ERROR');
+    }
+  };
+
+  const handleSwitchToSlave = () => {
+    try {
+      redundancyRef.current.switchToSlave();
+      setBildirim('SWITCHED TO SLAVE (STANDBY)');
+      void triggerSelection();
+    } catch {
+      pushLog('SLAVE SWITCH ERROR');
+    }
+  };
+
+  const handleStandaloneConsole = () => {
+    try {
+      redundancyRef.current.switchToStandalone();
+      setBildirim('STANDALONE MODE');
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleSwarmToggle = () => {
+    if (isSwarmMeshActive) {
+      applySwarmMesh(false);
+      return;
+    }
+    if (!swarmEngageEnabled) {
+      setBildirim('Swarm kilidi / blackout');
+      pushLog('SWARM ENGAGE DENIED');
+      void triggerErrorHaptic();
+      return;
+    }
+    applySwarmMesh(true);
+  };
+
+  /** V16 — uzamsal bölge maskesini uygula (macro + blackbox + payload). */
+  const applyActiveZones = (next: SpatialZoneId[]) => {
+    try {
+      setActiveZones(next);
+      const mask = computeZoneMask(next);
+      const msg = buildZoneChangedMessage(next);
+      recordMacroEvent('ZONE', { zoneMask: mask });
+      setBildirim('Zone mask · ' + formatZoneLabel(next) + ' (' + mask + ')');
+      pushLog(msg);
+      publishPayload(timerHasTime && !isPaused ? 'START_SHOW' : isPaused ? 'PAUSE' : 'RESET', {
+        zoneMask: mask,
+      });
+      void triggerSelection();
+    } catch {
+      pushLog('ZONE APPLY ERROR');
+    }
+  };
+
+  const handleZoneToggle = (zone: SpatialZoneId) => {
+    if (!zoneEditEnabled) return;
+    applyActiveZones(toggleActiveZone(activeZones, zone));
+  };
+
+  const handleZoneSelectAll = () => {
+    if (!zoneEditEnabled) return;
+    applyActiveZones([...DEFAULT_ACTIVE_ZONES]);
+  };
+
+  const handleZoneClearAll = () => {
+    if (!zoneEditEnabled) return;
+    applyActiveZones([]);
+  };
+
+  const handleZoneMaskApply = (mask: number) => {
+    if (!zoneEditEnabled && !isPlayingMacroRef.current) return;
+    applyActiveZones(zonesFromMask(mask));
   };
 
   /** Tribün filtresi seçimi (LED scope + bildirim + payload targetZone). */
@@ -1253,6 +1818,16 @@ export function useRejiConsole() {
           setMacroSequence(seq);
           pushLog('MACRO REC ABORT BLACKOUT');
         }
+        if (isSwarmMeshActive) {
+          setIsSwarmMeshActive(false);
+          setEstimatedMeshNodes(SWARM_MESH_NODES_IDLE);
+          pushLog(buildSwarmDisengagedMessage());
+        }
+        if (matrixCommandRef.current.engaged) {
+          const cleared = { ...matrixCommandRef.current, engaged: false };
+          setMatrixCommand(cleared);
+          pushLog('MATRIX_DISENGAGED');
+        }
       } catch {
         setIsPlayingMacro(false);
         setIsRecordingMacro(false);
@@ -1298,6 +1873,7 @@ export function useRejiConsole() {
       const payload = buildBlackoutPayload({
         bpm: bpmSnapshot,
         tribun: selectedTribun,
+        zoneMask,
       });
       lastPayloadRef.current = payload;
       setLastPayload(payload);
@@ -1533,6 +2109,24 @@ export function useRejiConsole() {
         case 'AUDIO_TOGGLE':
           void handleAudioListenToggle();
           break;
+        case 'ZONE':
+          if (typeof event.payload.zoneMask === 'number') {
+            applyActiveZones(zonesFromMask(event.payload.zoneMask));
+          }
+          break;
+        case 'SWARM_TOGGLE':
+          if (typeof event.payload.swarmActive === 'boolean') {
+            applySwarmMesh(event.payload.swarmActive);
+          } else {
+            handleSwarmToggle();
+          }
+          break;
+        case 'MATRIX':
+          applyMatrixFromMacro(
+            Boolean(event.payload.matrixEngaged),
+            event.payload.matrixEffect,
+          );
+          break;
         default:
           break;
       }
@@ -1614,15 +2208,26 @@ export function useRejiConsole() {
         setBildirim('Oynatılacak makro yok');
         return;
       }
-      setMacroSequence(seq);
+      const seqWithMode = {
+        ...seq,
+        syncMode: macroSyncMode,
+      };
+      setMacroSequence(seqWithMode);
       setMacroProgress(0);
       setIsPlayingMacro(true);
       isPlayingMacroRef.current = false;
-      pushLog('MACRO PLAY START · ' + seq.events.length + ' events');
-      setBildirim('MACRO PLAY');
-      const ok = timelineRef.current.play(seq, {
-        onEvent: (event) => macroDispatchRef.current(event),
-        onProgress: (p) => setMacroProgress(p.progress),
+      pushLog(
+        'MACRO PLAY START · ' +
+          seq.events.length +
+          ' events · ' +
+          macroSyncMode.toUpperCase(),
+      );
+      setBildirim(
+        macroSyncMode === 'smpte' ? 'MACRO PLAY · SMPTE TC' : 'MACRO PLAY',
+      );
+      const handlers = {
+        onEvent: (event: MacroEvent) => macroDispatchRef.current(event),
+        onProgress: (p: { progress: number }) => setMacroProgress(p.progress),
         onComplete: () => {
           setIsPlayingMacro(false);
           setMacroProgress(1);
@@ -1633,10 +2238,21 @@ export function useRejiConsole() {
           setIsPlayingMacro(false);
           setMacroProgress(0);
         },
-      });
+      };
+      const ok =
+        macroSyncMode === 'smpte'
+          ? timelineRef.current.playOnTimecode(seqWithMode, {
+              ...handlers,
+              getTimecodeMs: () => timecodeRef.current.getTotalMs(),
+            })
+          : timelineRef.current.play(seqWithMode, handlers);
       if (!ok) {
         setIsPlayingMacro(false);
-        setBildirim('Makro oynatılamadı');
+        setBildirim(
+          macroSyncMode === 'smpte'
+            ? 'SMPTE makro başlatılamadı (sinyal/events?)'
+            : 'Makro oynatılamadı',
+        );
       }
     } catch {
       setIsPlayingMacro(false);
@@ -1766,6 +2382,104 @@ export function useRejiConsole() {
     });
   };
 
+
+  // V21 — MIDI → Reji komutları (ref; effect stale closure yok)
+  midiDispatchRef.current = (target, meta) => {
+    try {
+      if (
+        isConsoleLockedRef.current &&
+        !isMidiAllowedWhenLocked(target)
+      ) {
+        pushLog('MIDI IGNORED (LOCKED) · ' + target);
+        return;
+      }
+
+      const logCritical = (action: string) => {
+        pushLog(buildMidiTriggeredMessage(action));
+      };
+
+      switch (target) {
+        case 'BLACKOUT':
+          logCritical('BLACKOUT');
+          handleBlackoutActivate();
+          break;
+        case 'ZONE_NORTH':
+          applyActiveZones(['NORTH']);
+          break;
+        case 'ZONE_SOUTH':
+          applyActiveZones(['SOUTH']);
+          break;
+        case 'ZONE_EAST':
+          applyActiveZones(['EAST']);
+          break;
+        case 'ZONE_WEST':
+          applyActiveZones(['WEST']);
+          break;
+        case 'ZONE_ALL':
+          handleZoneSelectAll();
+          break;
+        case 'MACRO_PLAY':
+          handleMacroPlay();
+          break;
+        case 'MACRO_STOP':
+          handleMacroStop();
+          break;
+        case 'MACRO_REC':
+          handleMacroRecord();
+          break;
+        case 'SWARM_TOGGLE':
+          logCritical('SWARM_TOGGLE');
+          handleSwarmToggle();
+          break;
+        case 'MATRIX_ENGAGE':
+          logCritical('MATRIX_ENGAGE');
+          handleMatrixEngage();
+          break;
+        case 'MATRIX_STOP':
+          handleMatrixDisengage();
+          break;
+        case 'MATRIX_SPEED':
+          if (typeof meta?.ccValue === 'number') {
+            const speed = ccToMatrixSpeed(meta.ccValue);
+            setMatrixCommand((prev) => {
+              const next = { ...prev, speed };
+              if (prev.engaged) {
+                queueMicrotask(() => {
+                  publishPayload(
+                    timerHasTime && !isPaused ? 'START_SHOW' : isPaused ? 'PAUSE' : 'RESET',
+                    { matrix: next },
+                  );
+                });
+              }
+              return next;
+            });
+          }
+          break;
+        case 'MATRIX_INTENSITY':
+          if (typeof meta?.ccValue === 'number') {
+            const intensity = ccToMatrixIntensity(meta.ccValue);
+            setMatrixCommand((prev) => {
+              const next = { ...prev, intensity };
+              if (prev.engaged) {
+                queueMicrotask(() => {
+                  publishPayload(
+                    timerHasTime && !isPaused ? 'START_SHOW' : isPaused ? 'PAUSE' : 'RESET',
+                    { matrix: next },
+                  );
+                });
+              }
+              return next;
+            });
+          }
+          break;
+        default:
+          break;
+      }
+    } catch {
+      pushLog('MIDI DISPATCH ERROR');
+    }
+  };
+
   return {
     // state
     sistemDurumu,
@@ -1807,6 +2521,18 @@ export function useRejiConsole() {
     blackboxLogs,
     blackboxEventCount: blackboxLogs.length,
     blackboxTerminalLogs: blackboxLogs.slice(-BLACKBOX_TERMINAL_LINES),
+    activeZones,
+    zoneMask,
+    zoneEditEnabled,
+    isSwarmMeshActive,
+    estimatedMeshNodes,
+    swarmEngageEnabled,
+    consoleRole,
+    peerStatus,
+    matrixCommand,
+    midiStatus,
+    timecodeStatus,
+    macroSyncMode,
     networkConfig,
     networkEndpoint,
     networkTransport,
@@ -1851,5 +2577,24 @@ export function useRejiConsole() {
     handleMacroStop,
     handleMacroPlay,
     handleExportMatchReport,
+    handleZoneToggle,
+    handleZoneSelectAll,
+    handleZoneClearAll,
+    handleZoneMaskApply,
+    handleSwarmToggle,
+    handlePromoteToMaster,
+    handleSwitchToSlave,
+    handleStandaloneConsole,
+    handleMatrixDraftChange,
+    handleMatrixEngage,
+    handleMatrixDisengage,
+    handleMidiConnect,
+    handleMidiBeginLearn,
+    handleMidiCancelLearn,
+    handleMidiClearBinding,
+    handleMidiResetBindings,
+    handleSaveShowfile,
+    handleLoadShowfile,
+    handleToggleMacroSyncMode,
   };
 }

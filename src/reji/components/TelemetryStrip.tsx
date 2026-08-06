@@ -26,6 +26,13 @@ import {
   formatNetworkStability,
   type TelemetryStats,
 } from '../telemetry';
+import {
+  formatConsoleRoleBadge,
+  type ConsoleRole,
+  type PeerStatus,
+} from '../redundancyEngine';
+import type { TimecodeStatus } from '../timecode';
+import { createTimecodeStatus } from '../timecode';
 import { rejiStyles as styles } from '../styles';
 
 type Props = {
@@ -37,6 +44,14 @@ type Props = {
   artNetStats?: ArtNetBridgeStats;
   securityLock?: SecurityLockState;
   offlineQueuePending?: number;
+  /** V17 — BLE swarm mesh */
+  isSwarmMeshActive?: boolean;
+  estimatedMeshNodes?: number;
+  /** V19 — dual-console role */
+  consoleRole?: ConsoleRole;
+  peerStatus?: PeerStatus;
+  /** V22 — SMPTE / MTC */
+  timecodeStatus?: TimecodeStatus;
 };
 
 function TelemetryStripComponent({
@@ -48,6 +63,11 @@ function TelemetryStripComponent({
   artNetStats = DEFAULT_ARTNET_STATS,
   securityLock = DEFAULT_SECURITY_LOCK,
   offlineQueuePending = 0,
+  isSwarmMeshActive = false,
+  estimatedMeshNodes = 0,
+  consoleRole = 'STANDALONE',
+  peerStatus = 'DISCONNECTED',
+  timecodeStatus = createTimecodeStatus(),
 }: Props) {
   if (isolated) {
     return (
@@ -63,6 +83,7 @@ function TelemetryStripComponent({
     );
   }
 
+  const tcLocked = timecodeStatus.locked;
   const linkAccent =
     linkStatus === 'CONNECTED'
       ? styles.telemetryValueAccent
@@ -89,6 +110,25 @@ function TelemetryStripComponent({
   return (
     <View style={styles.telemetryStrip}>
       <Text style={styles.telemetryTitle}>TELEMETRY & FIELD METRICS</Text>
+
+      <View
+        style={[
+          styles.smpteClock,
+          tcLocked ? styles.smpteClockLocked : styles.smpteClockIdle,
+        ]}>
+        <Text style={styles.smpteClockLabel}>SMPTE</Text>
+        <Text
+          style={[
+            styles.smpteClockDigits,
+            tcLocked && styles.smpteClockDigitsLive,
+          ]}>
+          {timecodeStatus.display}
+        </Text>
+        <Text style={styles.smpteClockMeta}>
+          {tcLocked ? 'MTC LOCK' : 'NO SIGNAL'} · {timecodeStatus.time.fps} fps
+        </Text>
+      </View>
+
       <View style={styles.telemetryGrid}>
         <View style={styles.telemetryCell}>
           <Text style={styles.telemetryLabel}>ANLIK FPS</Text>
@@ -180,6 +220,58 @@ function TelemetryStripComponent({
             {offlineQueuePending > 0
               ? offlineQueuePending + ' QUEUED'
               : '0 PENDING'}
+          </Text>
+        </View>
+        <View style={styles.telemetryCell}>
+          <Text style={styles.telemetryLabel}>MESH STATUS</Text>
+          <Text
+            style={[
+              styles.telemetryValue,
+              isSwarmMeshActive
+                ? styles.telemetryValueAccent
+                : styles.telemetryValueDanger,
+            ]}>
+            {isSwarmMeshActive ? 'ACTIVE' : 'INACTIVE'}
+          </Text>
+        </View>
+        <View style={styles.telemetryCell}>
+          <Text style={styles.telemetryLabel}>MESH NODES</Text>
+          <Text
+            style={[
+              styles.telemetryValue,
+              isSwarmMeshActive
+                ? styles.telemetryValueAccent
+                : styles.telemetryValueWarn,
+            ]}>
+            {isSwarmMeshActive
+              ? estimatedMeshNodes.toLocaleString('en-US')
+              : '—'}
+          </Text>
+        </View>
+        <View style={styles.telemetryCell}>
+          <Text style={styles.telemetryLabel}>CONSOLES</Text>
+          <Text
+            style={[
+              styles.telemetryValue,
+              consoleRole === 'MASTER'
+                ? styles.telemetryValueAccent
+                : consoleRole === 'SLAVE'
+                  ? styles.telemetryValueWarn
+                  : styles.telemetryValue,
+            ]}>
+            {formatConsoleRoleBadge(consoleRole)}
+          </Text>
+        </View>
+        <View style={styles.telemetryCell}>
+          <Text style={styles.telemetryLabel}>PEER LINK</Text>
+          <Text
+            style={[
+              styles.telemetryValue,
+              peerStatus === 'CONNECTED'
+                ? styles.telemetryValueAccent
+                : styles.telemetryValueDanger,
+            ]}>
+            {peerStatus}
           </Text>
         </View>
       </View>
