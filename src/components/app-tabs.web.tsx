@@ -24,6 +24,9 @@ export default function AppTabs() {
           <TabTrigger name="home" href="/" asChild>
             <TabButton>Ana Sayfa</TabButton>
           </TabTrigger>
+          <TabTrigger name="simulator" href="/simulator" asChild>
+            <TabButton>Simülatör</TabButton>
+          </TabTrigger>
           <TabTrigger name="explore" href="/explore" asChild>
             <TabButton>Explore</TabButton>
           </TabTrigger>

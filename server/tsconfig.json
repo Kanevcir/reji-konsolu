@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "types": ["node"],
+    "rootDir": "..",
+    "allowImportingTsExtensions": true
+  },
+  "include": [
+    "./src/**/*.ts",
+    "../src/reji/connectionAuth.ts",
+    "../src/reji/eventBus.ts",
+    "../src/reji/runtimeConfig.ts",
+    "../src/reji/roomSharding.ts",
+    "../src/reji/zombiePurge.ts",
+    "../src/reji/types.ts",
+    "../src/reji/pixelMapper.ts",
+    "../src/reji/seatPixelMap.ts",
+    "../src/reji/clockSync.ts",
+    "../src/reji/reconnectBackoff.ts",
+    "../src/reji/visualThemes.ts",
+    "../src/reji/puzzleChoreography.ts",
+    "../src/reji/zoneManager.ts"
+  ]
+}

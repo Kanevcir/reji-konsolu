@@ -1,0 +1,225 @@
+# V31 CI/CD: test -> static analysis -> Docker image build (deploy-ready)
+name: Deploy Pipeline
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: "22"
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  test-and-analyze:
+    name: Install · Security · Static Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Security suite (JWT / RBAC / zombie purge)
+        run: npm run test:security
+        env:
+          JWT_SECRET: ci-test-jwt-secret-not-for-prod
+          NODE_ENV: test
+          APP_ENV: test
+
+      - name: Server TypeScript check
+        run: npm run typecheck:server
+
+      - name: Reji / server unit sims (ptp · mapping · scale)
+        run: |
+          npm run test:ptp
+          npm run test:mapping
+          npm run test:scale
+        env:
+          JWT_SECRET: ci-test-jwt-secret-not-for-prod
+          NODE_ENV: test
+
+      - name: Lint (non-blocking advisory)
+        run: npm run lint || true
+        continue-on-error: true
+
+  load-smoke:
+    name: k6 WebSocket Smoke (JWT + ping/pong)
+    runs-on: ubuntu-latest
+    needs: test-and-analyze
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E479D000000000C5AD17C747E479D0 || true
+          curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install -y k6
+
+      - name: Start API (in-memory bus)
+        env:
+          PORT: "8080"
+          JWT_SECRET: ci-loadtest-jwt-secret
+          REDIS_URL: redis://127.0.0.1:9
+          APP_ENV: test
+          NODE_ENV: test
+          WS_PATH: /ws
+          WS_PING_INTERVAL_MS: "5000"
+          WS_PONG_TIMEOUT_MS: "15000"
+          WORKER_ID: ci-smoke
+        run: |
+          npx tsx server/src/index.ts > /tmp/reji-api.log 2>&1 &
+          echo $! > /tmp/reji-api.pid
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8080/health >/dev/null; then
+              echo "API ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "API failed to start"; cat /tmp/reji-api.log; exit 1
+
+      - name: k6 smoke against :8080
+        run: |
+          k6 run \
+            -e LOADTEST_BASE_URL=http://127.0.0.1:8080 \
+            -e LOADTEST_WS_URL=ws://127.0.0.1:8080/ws \
+            -e LOADTEST_VUS=20 \
+            -e LOADTEST_RAMP_UP=5s \
+            -e LOADTEST_HOLD=15s \
+            -e LOADTEST_RAMP_DOWN=5s \
+            -e LOADTEST_SESSION_SEC=12 \
+            load-test/load-test.js
+
+      - name: Post-smoke health (no crash / leak signal)
+        run: |
+          curl -sf http://127.0.0.1:8080/health | tee /tmp/health-after.json
+          node -e "const h=require('/tmp/health-after.json'); if(!h.ok) process.exit(1); console.log('connections=', h.connections, 'zombies=', h.zombiesPurged, 'authDenied=', h.authDenied);"
+
+      - name: Stop API
+        if: always()
+        run: |
+          if [ -f /tmp/reji-api.pid ]; then kill $(cat /tmp/reji-api.pid) || true; fi
+
+  build-images:
+    name: Docker Build (deploy-ready artifacts)
+    runs-on: ubuntu-latest
+    needs: [test-and-analyze, load-smoke]
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata (api)
+        id: meta-api
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/api
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          target: api
+          push: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+          tags: ${{ steps.meta-api.outputs.tags }}
+          labels: ${{ steps.meta-api.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            NODE_VERSION=22
+
+      - name: Image metadata (web)
+        id: meta-web
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/web
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Resolve Expo public JWT for image bake
+        id: expo-jwt
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: |
+          if [ -n "$JWT_SECRET" ]; then
+            echo "value=$JWT_SECRET" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=ci-build-placeholder-secret" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build Web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          target: web
+          push: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+          tags: ${{ steps.meta-web.outputs.tags }}
+          labels: ${{ steps.meta-web.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            NODE_VERSION=22
+            EXPO_PUBLIC_APP_ENV=production
+            EXPO_PUBLIC_WS_HOST=localhost
+            EXPO_PUBLIC_WS_PORT=8080
+            EXPO_PUBLIC_WS_SECURE=false
+            EXPO_PUBLIC_WS_PATH=/ws
+            EXPO_PUBLIC_JWT_SECRET=${{ steps.expo-jwt.outputs.value }}
+            EXPO_PUBLIC_PTP_NETWORK_BUFFER_MS=80
+
+      - name: Deploy-ready summary
+        run: |
+          echo "## Deploy-ready artifacts" >> "$GITHUB_STEP_SUMMARY"
+          echo "- API image target: \`api\` (PM2 cluster)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Web image target: \`web\` (nginx static)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Compose: \`docker compose --env-file .env.example up -d\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Registry: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}\`" >> "$GITHUB_STEP_SUMMARY"

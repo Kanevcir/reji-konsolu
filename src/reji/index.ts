@@ -6,7 +6,181 @@ export { RejiConsole } from './components/RejiConsole';
 export { MissionControlDashboard } from './components/MissionControlDashboard';
 export { useRejiConsole } from './hooks/useRejiConsole';
 export { buildBlackoutPayload } from './safety';
-export { buildOutgoingPayload, createIdlePayload, mapTribunToZone } from './payload';
+export {
+  buildOutgoingPayload,
+  createIdlePayload,
+  mapTribunToZone,
+} from './payload';
+export {
+  DEFAULT_PTP_NETWORK_BUFFER_MS,
+  PTP_EMERGENCY_BUFFER_MS,
+  computeTargetTimestamp,
+  computeEmergencyTargetTimestamp,
+  resolveNetworkBufferMs,
+  formatPtpTargetLabel,
+} from './ptpBroadcast';
+export type { PtpBroadcastMeta } from './ptpBroadcast';
+export {
+  scheduleAtPtp,
+  scheduleCueList,
+  measureScheduleError,
+} from './clientScheduler';
+export type { ScheduledHandle, ScheduleAtOptions } from './clientScheduler';
+export {
+  OfflineResilienceEngine,
+  createMemoryStorageAdapter,
+  serializeOfflineTimeline,
+  parseOfflineTimeline,
+  OFFLINE_TIMELINE_STORAGE_KEY,
+} from './offlineResilience';
+export type {
+  OfflineTimelineCue,
+  OfflineShowTimeline,
+  OfflineResilienceStatus,
+  OfflineStorageAdapter,
+} from './offlineResilience';
+export {
+  InMemoryEventBus,
+} from './eventBus';
+export type { EventBus, EventBusMessage, EventBusHandler, EventBusStats } from './eventBus';
+export {
+  ScaleWorker,
+  ScaleCluster,
+  tribuneToRoom,
+  roomToTribune,
+  roomsForOutgoingTarget,
+  TRIBUNE_ROOMS,
+  ROOM_ALL,
+} from './roomSharding';
+export type { ShardRoomId, WorkerStats, ScaleClusterStats } from './roomSharding';
+export {
+  computeReconnectDelayMs,
+  computeEqualJitterDelayMs,
+  scheduleReconnectAt,
+  analyzeReconnectSpread,
+  ReconnectBackoffController,
+  DEFAULT_BACKOFF_BASE_MS,
+  DEFAULT_BACKOFF_CAP_MS,
+} from './reconnectBackoff';
+export type { BackoffOptions } from './reconnectBackoff';
+export {
+  buildClientStubs,
+  applyThunderingHerdReconnect,
+  runScaleFanoutSimulation,
+  buildGolPayload,
+  SCALE_TARGET_CLIENTS,
+  SCALE_DEFAULT_WORKERS,
+} from './scaleCluster';
+export type { ScaleClientStub } from './scaleCluster';
+export { StadiumClientRuntime } from './stadiumClientRuntime';
+export type {
+  AppliedClientCommand,
+  StadiumClientHandlers,
+} from './stadiumClientRuntime';
+export { StadiumVisualizerScreen } from './components/StadiumVisualizer';
+export {
+  publishStadiumLive,
+  subscribeStadiumLive,
+  getLastStadiumLiveFrame,
+  STADIUM_LIVE_CHANNEL,
+} from './stadiumLiveBus';
+export type { StadiumLiveFrame } from './stadiumLiveBus';
+export {
+  StadiumVisualizerEngine,
+  buildVisualizerPhones,
+  drawVisualizerFrame,
+  VISUALIZER_PHONE_COUNT,
+} from './stadiumVisualizerEngine';
+export type { VisualizerPhone } from './stadiumVisualizerEngine';
+export {
+  getRuntimeEnv,
+  getJwtSecret,
+  getJwtTtlMs,
+  getRedisUrl,
+  getHttpPort,
+  getWsPath,
+  getPublicWsHost,
+  getPublicWsPort,
+  getPublicWsSecure,
+  getPtpNetworkBufferMs,
+  getPtpEmergencyBufferMs,
+  getPtpBufferMinMs,
+  getPtpBufferMaxMs,
+  getPingIntervalMs,
+  getPongTimeoutMs,
+  getWorkerId,
+  getAdminBootstrapKey,
+  getUdpMulticastGroup,
+  getUdpMulticastPort,
+  getPublicConfigSnapshot,
+} from './runtimeConfig';
+export {
+  issueAccessToken,
+  verifyAccessToken,
+  authorizeAdminCommand,
+  authorizeClientConnect,
+  isAdminOnlyAction,
+  formatRoleLabel,
+  ADMIN_ONLY_ACTIONS,
+  DEFAULT_AUTH_SECRET,
+  DEFAULT_TOKEN_TTL_MS,
+  resolveAuthSecret,
+} from './connectionAuth';
+export type {
+  ConnectionRole,
+  AuthClaims,
+  TokenVerifyResult,
+  AuthGateResult,
+} from './connectionAuth';
+export {
+  ZombiePurgeRegistry,
+  DEFAULT_PING_INTERVAL_MS,
+  DEFAULT_PONG_TIMEOUT_MS,
+} from './zombiePurge';
+export type { ConnectionHeartbeat, PurgeResult } from './zombiePurge';
+export {
+  DEFAULT_SYSTEM_HEALTH,
+  buildWorkerLoads,
+  estimateJitterMs,
+  formatDisconnectedRate,
+  formatHealthLine,
+} from './systemHealth';
+export type { SystemHealthSnapshot, WorkerLoadMetric } from './systemHealth';
+export { SecureScaleGateway } from './secureGateway';
+export type {
+  GatewaySession,
+  SecureConnectResult,
+  SecurePublishResult,
+} from './secureGateway';
+export { SystemMetricsPanel } from './components/SystemMetricsPanel';
+export {
+  SeatOnboardingAuth,
+  seatToPixel,
+  seatKeyOf,
+  pixelKeyOf,
+  parseTribuneLabel,
+  ticketFromLabels,
+  enumerateUniqueTickets,
+  stadiumSeatCapacity,
+  validateSeatTicket,
+  TRIBUNE_BANDS,
+  TRIBUNE_LABEL_TR,
+} from './seatPixelMap';
+export type {
+  SeatTicket,
+  SeatMapping,
+  PixelCoord,
+  SeatAuthResult,
+  StadiumTribuneId,
+  TribuneBandLayout,
+} from './seatPixelMap';
+export {
+  sliceVisualForDevice,
+  samplePuzzlePixelAt,
+  rgbEquals,
+} from './visualSlicer';
+export type { SlicedPixelFrame, VisualSlicerInput } from './visualSlicer';
+
 export { formatDeliveryLabel, formatSocketLabel, formatTransportLabel, randomAckDelayMs } from './socket';
 export {
   isHapticMotorActive,
@@ -158,34 +332,63 @@ export type {
   RedundancySyncState,
 } from './redundancyEngine';
 export {
-  PIXEL_GRID_W,
-  PIXEL_GRID_H,
-  PREVIEW_GRID,
-  MATRIX_EFFECTS,
   buildMatrixCommand,
   buildMatrixEngagedMessage,
   createIdleMatrixCommand,
   evaluatePixel,
   fillPreviewBuffer,
   formatMatrixEffectLabel,
+  normalizeMatrixCommand,
+  MATRIX_EFFECTS,
+  PIXEL_GRID_W,
+  PIXEL_GRID_H,
+  PREVIEW_GRID,
 } from './pixelMapper';
 export type { MatrixCommand, MatrixEffect } from './pixelMapper';
 export {
+  VISUAL_THEMES,
+  THEME_ORDER,
+  interpolateTheme,
+  resolveCurrentTheme,
+  formatThemeLabel,
+  ccToThemeMix,
+  ccToStrobeSensitivity,
+  shouldTriggerStrobe,
+  strobeThresholdDb,
+  themeIdToMix,
+} from './visualThemes';
+export type { VisualThemeId, ThemePalette, InterpolatedTheme } from './visualThemes';
+export { ThemeStrobePanel } from './components/ThemeStrobePanel';
+export { EmojiPuzzlePanel } from './components/EmojiPuzzlePanel';
+export {
+  PUZZLE_PRESETS,
+  OVERLAY_EMOJI_QUICK,
+  formatPuzzlePresetLabel,
+  micEnergyToWaveSync,
+  sampleTurkishFlag,
+  sampleClubCup,
+} from './puzzleChoreography';
+export type { PuzzlePresetId, PuzzlePreset } from './puzzleChoreography';
+export {
   MIDI_LEARN_TARGETS,
   DEFAULT_MIDI_BINDINGS,
+  TRAKTOR_Z1_BINDINGS,
   MidiControllerEngine,
   buildMidiTriggeredMessage,
   ccToMatrixSpeed,
   ccToMatrixIntensity,
   formatMidiTargetLabel,
   formatMidiBinding,
+  formatMidiHardwareProfile,
   isMidiAllowedWhenLocked,
   isMidiSupported,
+  isTraktorHardware,
 } from './midiController';
 export type {
   MidiTarget,
   MidiBinding,
   MidiControllerStatus,
+  MidiHardwareProfile,
 } from './midiController';
 export {
   createTimecodeStatus,

@@ -1,0 +1,138 @@
+# V31 — Redis + API cluster + worker replicas + Expo web
+# Usage: docker compose --env-file .env.production up --build
+
+name: pulse-reji
+
+services:
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxclients", "100000"]
+    ports:
+      - "${REDIS_PUBLISH_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - reji-net
+
+  # Ana API — PM2 cluster (WEB_CONCURRENCY instance / container)
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: api
+    restart: unless-stopped
+    env_file:
+      - .env.example
+    environment:
+      NODE_ENV: production
+      APP_ENV: production
+      PORT: 8080
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      ADMIN_BOOTSTRAP_KEY: ${ADMIN_BOOTSTRAP_KEY:-change-admin-bootstrap}
+      PTP_NETWORK_BUFFER_MS: ${PTP_NETWORK_BUFFER_MS:-80}
+      PTP_BUFFER_MAX_MS: ${PTP_BUFFER_MAX_MS:-250}
+      WS_PING_INTERVAL_MS: ${WS_PING_INTERVAL_MS:-5000}
+      WS_PONG_TIMEOUT_MS: ${WS_PONG_TIMEOUT_MS:-15000}
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
+      WORKER_ID: api-primary
+      WS_PATH: /ws
+    depends_on:
+      redis:
+        condition: service_healthy
+    expose:
+      - "8080"
+    networks:
+      - reji-net
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 25s
+
+  # Ek worker node’lar — aynı image, yatay ölçek (compose scale)
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: api
+    restart: unless-stopped
+    env_file:
+      - .env.example
+    environment:
+      NODE_ENV: production
+      APP_ENV: production
+      PORT: 8080
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      ADMIN_BOOTSTRAP_KEY: ${ADMIN_BOOTSTRAP_KEY:-change-admin-bootstrap}
+      PTP_NETWORK_BUFFER_MS: ${PTP_NETWORK_BUFFER_MS:-80}
+      PTP_BUFFER_MAX_MS: ${PTP_BUFFER_MAX_MS:-250}
+      WS_PING_INTERVAL_MS: ${WS_PING_INTERVAL_MS:-5000}
+      WS_PONG_TIMEOUT_MS: ${WS_PONG_TIMEOUT_MS:-15000}
+      WEB_CONCURRENCY: ${WORKER_WEB_CONCURRENCY:-2}
+      WS_PATH: /ws
+    depends_on:
+      redis:
+        condition: service_healthy
+    expose:
+      - "8080"
+    networks:
+      - reji-net
+    # Yatay ölçek: docker compose up --scale worker=3
+
+  # Edge load balancer — HTTP + WebSocket upgrade → api/worker
+  gateway:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PUBLISH_PORT:-8080}:8080"
+    volumes:
+      - ./infra/nginx-gateway.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - api
+      - worker
+    networks:
+      - reji-net
+
+  # Expo web static
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web
+      args:
+        EXPO_PUBLIC_APP_ENV: production
+        EXPO_PUBLIC_WS_HOST: ${EXPO_PUBLIC_WS_HOST:-localhost}
+        EXPO_PUBLIC_WS_PORT: ${EXPO_PUBLIC_WS_PORT:-8080}
+        EXPO_PUBLIC_WS_SECURE: ${EXPO_PUBLIC_WS_SECURE:-false}
+        EXPO_PUBLIC_WS_PATH: /ws
+        EXPO_PUBLIC_JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+        EXPO_PUBLIC_PTP_NETWORK_BUFFER_MS: ${PTP_NETWORK_BUFFER_MS:-80}
+    restart: unless-stopped
+    ports:
+      - "${WEB_PUBLISH_PORT:-3000}:80"
+    depends_on:
+      - gateway
+    networks:
+      - reji-net
+
+volumes:
+  redis-data:
+
+networks:
+  reji-net:
+    driver: bridge

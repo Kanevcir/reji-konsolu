@@ -2,6 +2,13 @@
  * V21.0 — Endüstriyel MIDI Fiziksel Kontrol (Tactile Hardware Mapping).
  * Web MIDI API; Note On/Off + CC → Reji komutları.
  * CC güncellemeleri throttle’lı — UI thread korunur.
+ *
+ * V23.1 — Traktor Kontrol Z1 otomatik donanım profili.
+ * V24.0 — Traktor CC rolleri:
+ *   1. CC (crossfader) → THEME_MIX
+ *   2. CC (fader) → MATRIX_SPEED
+ *   3. CC (fader) → STROBE_SENSITIVITY
+ *   Note On → BLACKOUT
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -9,6 +16,22 @@ import { Platform } from 'react-native';
 
 export const MIDI_STORAGE_KEY = '@pulse/reji-midi-bindings-v1';
 export const MIDI_CC_THROTTLE_MS = 50;
+
+/** Otomatik donanım profilleri. */
+export type MidiHardwareProfile = 'manual' | 'traktor_z1';
+
+/** Cihaz adı veya manufacturer "Traktor" içeriyorsa otomatik profil. */
+export function isTraktorHardware(label: string | null | undefined): boolean {
+  if (!label) return false;
+  return /traktor/i.test(label);
+}
+
+export function formatMidiHardwareProfile(
+  profile: MidiHardwareProfile,
+): string {
+  if (profile === 'traktor_z1') return 'TRAKTOR Z1 AUTO';
+  return 'MANUAL / LEARN';
+}
 
 /** Öğrenilebilir / bağlanabilir hedefler. */
 export type MidiTarget =
@@ -25,9 +48,13 @@ export type MidiTarget =
   | 'MATRIX_ENGAGE'
   | 'MATRIX_STOP'
   | 'MATRIX_SPEED'
-  | 'MATRIX_INTENSITY';
+  | 'MATRIX_INTENSITY'
+  | 'THEME_MIX'
+  | 'STROBE_SENSITIVITY';
 
 export type MidiBindingKind = 'note' | 'cc';
+
+export type TraktorCcRole = 'THEME_MIX' | 'MATRIX_SPEED' | 'STROBE_SENSITIVITY';
 
 export type MidiBinding = {
   target: MidiTarget;
@@ -51,6 +78,8 @@ export type MidiControllerStatus = {
   devices: MidiDeviceInfo[];
   learningTarget: MidiTarget | null;
   bindings: MidiBinding[];
+  /** V23.1 — otomatik donanım profili (Traktor Z1 vb.). */
+  hardwareProfile: MidiHardwareProfile;
 };
 
 export const MIDI_LEARN_TARGETS: readonly MidiTarget[] = [
@@ -68,6 +97,8 @@ export const MIDI_LEARN_TARGETS: readonly MidiTarget[] = [
   'MATRIX_STOP',
   'MATRIX_SPEED',
   'MATRIX_INTENSITY',
+  'THEME_MIX',
+  'STROBE_SENSITIVITY',
 ] as const;
 
 export const DEFAULT_MIDI_BINDINGS: MidiBinding[] = [
@@ -85,6 +116,16 @@ export const DEFAULT_MIDI_BINDINGS: MidiBinding[] = [
   { target: 'MATRIX_STOP', kind: 'note', channel: 0, number: 57 },
   { target: 'MATRIX_SPEED', kind: 'cc', channel: 0, number: 1 },
   { target: 'MATRIX_INTENSITY', kind: 'cc', channel: 0, number: 7 },
+  { target: 'THEME_MIX', kind: 'cc', channel: 0, number: 8 },
+  { target: 'STROBE_SENSITIVITY', kind: 'cc', channel: 0, number: 11 },
+];
+
+/** Traktor Kontrol Z1 — UI için bilinen varsayılanlar. */
+export const TRAKTOR_Z1_BINDINGS: MidiBinding[] = [
+  { target: 'BLACKOUT', kind: 'note', channel: 0, number: 0 },
+  { target: 'THEME_MIX', kind: 'cc', channel: 0, number: 1 },
+  { target: 'MATRIX_SPEED', kind: 'cc', channel: 0, number: 2 },
+  { target: 'STROBE_SENSITIVITY', kind: 'cc', channel: 0, number: 3 },
 ];
 
 export function formatMidiTargetLabel(target: MidiTarget): string {
@@ -180,6 +221,9 @@ export class MidiControllerEngine {
   private deviceName: string | null = null;
   private devices: MidiDeviceInfo[] = [];
   private accessState: MidiControllerStatus['accessState'] = 'idle';
+  private hardwareProfile: MidiHardwareProfile = 'manual';
+  /** V24 — Traktor CC numarası → rol (ilk görülen XF/fader sırası). */
+  private traktorCcRoles = new Map<number, TraktorCcRole>();
   private ccLastAt = new Map<string, number>();
   private destroyed = false;
 
@@ -191,6 +235,7 @@ export class MidiControllerEngine {
       devices: [...this.devices],
       learningTarget: this.learningTarget,
       bindings: this.bindings.map((b) => ({ ...b })),
+      hardwareProfile: this.hardwareProfile,
     };
   }
 
@@ -254,6 +299,12 @@ export class MidiControllerEngine {
   }
 
   beginLearn(target: MidiTarget) {
+    // Traktor auto profilde Learn gerekmez — hardcoded route geçerli.
+    if (this.hardwareProfile === 'traktor_z1') {
+      this.learningTarget = null;
+      this.emitStatus();
+      return;
+    }
     this.learningTarget = target;
     this.emitStatus();
   }
@@ -270,7 +321,11 @@ export class MidiControllerEngine {
   }
 
   resetBindings() {
-    this.bindings = [...DEFAULT_MIDI_BINDINGS];
+    this.traktorCcRoles.clear();
+    this.bindings =
+      this.hardwareProfile === 'traktor_z1'
+        ? TRAKTOR_Z1_BINDINGS.map((b) => ({ ...b }))
+        : [...DEFAULT_MIDI_BINDINGS];
     void this.saveBindings();
     this.emitStatus();
   }
@@ -302,6 +357,7 @@ export class MidiControllerEngine {
     if (!this.access) {
       this.devices = [];
       this.deviceName = null;
+      this.hardwareProfile = 'manual';
       return;
     }
     const inputs = listInputs(this.access).filter(
@@ -317,14 +373,69 @@ export class MidiControllerEngine {
         ? `${this.devices[0].manufacturer} ${this.devices[0].name}`.trim()
         : this.devices[0].name
       : null;
+
+    this.applyHardwareProfileFromDevices();
+    this.emitStatus();
+  }
+
+  /** Adında "Traktor" geçen input → Z1 auto profil + hardcoded map. */
+  private applyHardwareProfileFromDevices() {
+    const traktorHit = this.devices.find(
+      (d) =>
+        isTraktorHardware(d.name) ||
+        isTraktorHardware(d.manufacturer) ||
+        isTraktorHardware(`${d.manufacturer} ${d.name}`),
+    );
+
+    if (!traktorHit) {
+      if (this.hardwareProfile === 'traktor_z1') {
+        this.hardwareProfile = 'manual';
+        this.traktorCcRoles.clear();
+        this.bindings = [...DEFAULT_MIDI_BINDINGS];
+        void this.saveBindings();
+        try {
+          console.log('[MIDI] TRAKTOR PROFILE OFF · restored manual bindings');
+        } catch {
+          // ignore
+        }
+      }
+      return;
+    }
+
+    const wasManual = this.hardwareProfile !== 'traktor_z1';
+    this.hardwareProfile = 'traktor_z1';
+    this.learningTarget = null;
+    this.deviceName = traktorHit.manufacturer
+      ? `${traktorHit.manufacturer} ${traktorHit.name}`.trim()
+      : traktorHit.name;
+
+    if (wasManual) {
+      this.traktorCcRoles.clear();
+      this.bindings = TRAKTOR_Z1_BINDINGS.map((b) => ({ ...b }));
+      void this.saveBindings();
+      try {
+        console.log(
+          '[MIDI] TRAKTOR AUTO PROFILE ·',
+          this.deviceName,
+          '· XF→THEME · Fader→SPEED/STROBE · NoteOn→BLACKOUT',
+        );
+      } catch {
+        // ignore
+      }
+    }
   }
 
   private wireInputs() {
     if (!this.access) return;
     for (const input of listInputs(this.access)) {
+      const inputLabel =
+        input.name?.trim() ||
+        input.manufacturer?.trim() ||
+        input.id ||
+        'MIDI Input';
       input.onmidimessage = (ev) => {
         try {
-          this.handleMessage(ev.data);
+          this.handleMessage(ev.data, inputLabel);
         } catch {
           // tek mesaj UI’yı bozmaz
         }
@@ -332,13 +443,17 @@ export class MidiControllerEngine {
     }
   }
 
-  private handleMessage(data: Uint8Array) {
+  private handleMessage(data: Uint8Array, inputLabel = 'MIDI') {
     if (this.destroyed || !data || data.length < 1) return;
     const status = data[0]!;
 
     // V22 — MTC quarter frame / SysEx full frame
     if (status === 0xf1 || status === 0xf0) {
       try {
+        console.log('[MIDI] RAW/MTC', {
+          device: inputLabel,
+          bytes: Array.from(data),
+        });
         this.handlers?.onRawMidi?.(data);
       } catch {
         // ignore
@@ -354,16 +469,37 @@ export class MidiControllerEngine {
 
     // Note On
     if (cmd === 0x90 && value > 0) {
-      this.resolveEvent('note', channel, number);
+      try {
+        console.log(
+          `[MIDI] NoteOn · device="${inputLabel}" · ch=${channel + 1} · note=${number} · vel=${value}`,
+        );
+      } catch {
+        // ignore
+      }
+      this.resolveEvent('note', channel, number, undefined, inputLabel);
       return;
     }
     // Note Off / Note On vel 0 — learn dışı ignore
     if (cmd === 0x80 || (cmd === 0x90 && value === 0)) {
+      try {
+        console.log(
+          `[MIDI] NoteOff · device="${inputLabel}" · ch=${channel + 1} · note=${number} · vel=${value}`,
+        );
+      } catch {
+        // ignore
+      }
       return;
     }
     // Control Change
     if (cmd === 0xb0) {
-      this.resolveEvent('cc', channel, number, value);
+      try {
+        console.log(
+          `[MIDI] CC · device="${inputLabel}" · ch=${channel + 1} · cc=${number} · value=${value}`,
+        );
+      } catch {
+        // ignore
+      }
+      this.resolveEvent('cc', channel, number, value, inputLabel);
     }
   }
 
@@ -372,12 +508,26 @@ export class MidiControllerEngine {
     channel: number,
     number: number,
     ccValue?: number,
+    inputLabel?: string,
   ) {
+    // V23.1 — Traktor Z1: Learn beklemeden hardcoded route
+    if (
+      this.hardwareProfile === 'traktor_z1' ||
+      isTraktorHardware(inputLabel) ||
+      isTraktorHardware(this.deviceName)
+    ) {
+      this.dispatchTraktorAutoProfile(kind, channel, number, ccValue);
+      return;
+    }
+
     if (this.learningTarget) {
       const target = this.learningTarget;
       // CC hedefleri CC ile, pad hedefleri note ile tercih
       const prefersCc =
-        target === 'MATRIX_SPEED' || target === 'MATRIX_INTENSITY';
+        target === 'MATRIX_SPEED' ||
+        target === 'MATRIX_INTENSITY' ||
+        target === 'THEME_MIX' ||
+        target === 'STROBE_SENSITIVITY';
       if (prefersCc && kind !== 'cc') return;
       if (!prefersCc && kind !== 'note') return;
 
@@ -421,6 +571,71 @@ export class MidiControllerEngine {
       this.handlers?.onAction?.(hit.target);
     } catch {
       // ignore
+    }
+  }
+
+  /**
+   * Traktor Kontrol Z1 auto map (V24):
+   * - 1. benzersiz CC (crossfader) → THEME_MIX
+   * - 2. benzersiz CC → MATRIX_SPEED
+   * - 3+ CC → STROBE_SENSITIVITY
+   * - Note On → BLACKOUT
+   */
+  private resolveTraktorCcRole(ccNumber: number): TraktorCcRole {
+    const existing = this.traktorCcRoles.get(ccNumber);
+    if (existing) return existing;
+    const order = this.traktorCcRoles.size;
+    const role: TraktorCcRole =
+      order === 0
+        ? 'THEME_MIX'
+        : order === 1
+          ? 'MATRIX_SPEED'
+          : 'STROBE_SENSITIVITY';
+    this.traktorCcRoles.set(ccNumber, role);
+    try {
+      console.log(
+        `[MIDI] TRAKTOR CC${ccNumber} assigned → ${role}` +
+          (order === 0 ? ' (crossfader / theme)' : ''),
+      );
+    } catch {
+      // ignore
+    }
+    return role;
+  }
+
+  private dispatchTraktorAutoProfile(
+    kind: MidiBindingKind,
+    channel: number,
+    number: number,
+    ccValue?: number,
+  ) {
+    if (kind === 'cc') {
+      const key = bindingKey('cc', channel, number);
+      const now = Date.now();
+      const last = this.ccLastAt.get(key) ?? 0;
+      if (now - last < MIDI_CC_THROTTLE_MS) return;
+      this.ccLastAt.set(key, now);
+      const role = this.resolveTraktorCcRole(number);
+      try {
+        console.log(
+          `[MIDI] TRAKTOR → ${role} · ch=${channel + 1} · cc=${number} · value=${ccValue ?? 0}`,
+        );
+        this.handlers?.onAction?.(role, { ccValue });
+      } catch {
+        // ignore
+      }
+      return;
+    }
+
+    if (kind === 'note') {
+      try {
+        console.log(
+          `[MIDI] TRAKTOR → BLACKOUT · ch=${channel + 1} · note=${number}`,
+        );
+        this.handlers?.onAction?.('BLACKOUT');
+      } catch {
+        // ignore
+      }
     }
   }
 

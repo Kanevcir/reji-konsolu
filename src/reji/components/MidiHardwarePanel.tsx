@@ -1,5 +1,6 @@
 /**
  * V21.0 — EXTERNAL HARDWARE & MIDI paneli (MIDI LEARN + cihaz durumu).
+ * V23.1 — Traktor Z1 auto profil göstergesi.
  */
 
 import { memo } from 'react';
@@ -7,6 +8,7 @@ import { Text, TouchableOpacity, View } from 'react-native';
 
 import {
   formatMidiBinding,
+  formatMidiHardwareProfile,
   formatMidiTargetLabel,
   MIDI_LEARN_TARGETS,
   type MidiBinding,
@@ -40,6 +42,7 @@ function MidiHardwarePanelComponent({
   onResetBindings,
 }: Props) {
   const learning = status.learningTarget;
+  const autoProfile = status.hardwareProfile === 'traktor_z1';
   const connectedLabel = status.deviceName
     ? `Connected: ${status.deviceName}`
     : status.accessState === 'granted'
@@ -55,9 +58,12 @@ function MidiHardwarePanelComponent({
       <Text style={styles.sectionLabel}>EXTERNAL HARDWARE & MIDI</Text>
       <Text style={styles.midiHint}>{connectedLabel}</Text>
       <Text style={styles.midiSubHint}>
-        {learning
-          ? `MIDI LEARN · ${formatMidiTargetLabel(learning)} — fiziksel tuşa/fader’a bas`
-          : 'Pad → Zone/Macro/Blackout · CC fader → Matrix speed/intensity'}
+        PROFILE: {formatMidiHardwareProfile(status.hardwareProfile)}
+        {autoProfile
+          ? ' · XF→Theme · Fader→Speed/Strobe · Note→BLACKOUT'
+          : learning
+            ? ` · MIDI LEARN · ${formatMidiTargetLabel(learning)} — fiziksel tuşa/fader’a bas`
+            : ' · Pad → Zone/Macro/Blackout · CC fader → Matrix/Theme/Strobe'}
       </Text>
 
       <View style={styles.midiBtnRow}>
@@ -70,7 +76,7 @@ function MidiHardwarePanelComponent({
             {status.accessState === 'granted' ? 'REFRESH MIDI' : 'CONNECT MIDI'}
           </Text>
         </TouchableOpacity>
-        {learning ? (
+        {learning && !autoProfile ? (
           <TouchableOpacity
             accessibilityRole="button"
             activeOpacity={0.75}
@@ -89,30 +95,44 @@ function MidiHardwarePanelComponent({
         )}
       </View>
 
-      <Text style={styles.midiSectionTitle}>MIDI LEARN TARGETS</Text>
+      <Text style={styles.midiSectionTitle}>
+        {autoProfile ? 'TRAKTOR AUTO MAP (LEARN BYPASSED)' : 'MIDI LEARN TARGETS'}
+      </Text>
       <View style={styles.midiTargetGrid}>
         {MIDI_LEARN_TARGETS.map((target) => {
           const bind = bindingFor(status.bindings, target);
-          const active = learning === target;
+          const active = !autoProfile && learning === target;
           return (
             <View key={target} style={styles.midiTargetRow}>
               <TouchableOpacity
                 accessibilityRole="button"
-                accessibilityState={{ selected: active }}
+                accessibilityState={{ selected: active, disabled: autoProfile }}
                 activeOpacity={0.75}
+                disabled={autoProfile}
                 onPress={() => onBeginLearn(target)}
                 style={[
                   styles.midiTargetBtn,
                   active && styles.midiTargetBtnLearn,
+                  autoProfile && styles.controlDisabled,
                 ]}>
                 <Text style={styles.midiTargetName}>
                   {formatMidiTargetLabel(target)}
                 </Text>
                 <Text style={styles.midiTargetBind}>
-                  {bind ? formatMidiBinding(bind) : '— unbound —'}
+                  {autoProfile && target === 'BLACKOUT'
+                    ? 'AUTO · any Note On'
+                    : autoProfile && target === 'THEME_MIX'
+                      ? 'AUTO · 1st CC (XF)'
+                      : autoProfile && target === 'MATRIX_SPEED'
+                        ? 'AUTO · 2nd CC (fader)'
+                        : autoProfile && target === 'STROBE_SENSITIVITY'
+                          ? 'AUTO · 3rd CC (fader)'
+                          : bind
+                            ? formatMidiBinding(bind)
+                            : '— unbound —'}
                 </Text>
               </TouchableOpacity>
-              {bind ? (
+              {bind && !autoProfile ? (
                 <TouchableOpacity
                   accessibilityRole="button"
                   onPress={() => onClearBinding(target)}

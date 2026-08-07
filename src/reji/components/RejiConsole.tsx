@@ -4,8 +4,9 @@
  * Layout: MissionControlDashboard (sol / orta / sağ).
  */
 
-import { Alert, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Platform, Text, TouchableOpacity, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { useRouter } from 'expo-router';
 
 import { normalizeMicLevel } from '../audioBeat';
 import {
@@ -29,6 +30,8 @@ import { VirtualCrowdPanel } from './VirtualCrowdPanel';
 import { RedundancyPanel } from './RedundancyPanel';
 import { ChoreographyPanel } from './ChoreographyPanel';
 import { MidiHardwarePanel } from './MidiHardwarePanel';
+import { ThemeStrobePanel } from './ThemeStrobePanel';
+import { EmojiPuzzlePanel } from './EmojiPuzzlePanel';
 import { ShowFileBar } from './ShowFileBar';
 import { ConsoleLockOverlay } from './ConsoleLockOverlay';
 import { BlackoutBanner } from './BlackoutBanner';
@@ -38,10 +41,12 @@ import { RejiButton } from './RejiButton';
 import { OutgoingPayloadMonitor } from './OutgoingPayloadMonitor';
 import { StatusPanel } from './StatusPanel';
 import { TelemetryStrip } from './TelemetryStrip';
+import { SystemMetricsPanel } from './SystemMetricsPanel';
 import { VirtualStadium } from './VirtualStadium';
 import { MissionControlDashboard } from './MissionControlDashboard';
 
 export function RejiConsole() {
+  const router = useRouter();
   const consoleState = useRejiConsole();
 
   const {
@@ -67,6 +72,7 @@ export function RejiConsole() {
     presetSlots,
     telemetryStats,
     clockSyncStats,
+    systemHealth,
     artNetConfig,
     artNetStats,
     securityLock,
@@ -141,9 +147,15 @@ export function RejiConsole() {
     handleSwitchToSlave,
     handleStandaloneConsole,
     matrixCommand,
+    currentTheme,
     handleMatrixDraftChange,
     handleMatrixEngage,
     handleMatrixDisengage,
+    handleSelectTheme,
+    handleThemeMixDelta,
+    handleStrobeSensitivityDelta,
+    handlePuzzlePreset,
+    handleOverlayEmoji,
     midiStatus,
     handleMidiConnect,
     handleMidiBeginLearn,
@@ -244,21 +256,43 @@ export function RejiConsole() {
     </>
   );
 
+  const openStadiumSimulator = () => {
+    try {
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.open('/simulator', '_blank', 'noopener,noreferrer');
+        return;
+      }
+      router.push('/simulator');
+    } catch {
+      router.push('/simulator');
+    }
+  };
+
   const lockControl = (
-    <TouchableOpacity
-      accessibilityRole="button"
-      accessibilityLabel={isConsoleLocked ? 'Kilit aç' : 'Konsolu kilitle'}
-      activeOpacity={0.75}
-      onPress={handleRequestLockToggle}
-      style={[
-        styles.lockToggleBtn,
-        isConsoleLocked && styles.lockToggleBtnLocked,
-        { width: '100%' },
-      ]}>
-      <Text style={styles.lockToggleBtnText}>
-        {isConsoleLocked ? 'KİLİT AÇ (PIN)' : 'KONSOLU KİLİTLE'}
-      </Text>
-    </TouchableOpacity>
+    <View style={styles.cockpitLockStack}>
+      <TouchableOpacity
+        accessibilityRole="button"
+        accessibilityLabel="Stadyum simülatörünü aç"
+        activeOpacity={0.75}
+        onPress={openStadiumSimulator}
+        style={styles.simOpenBtn}>
+        <Text style={styles.simOpenBtnText}>STADYUM SİMÜLATÖRÜNÜ AÇ</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        accessibilityRole="button"
+        accessibilityLabel={isConsoleLocked ? 'Kilit aç' : 'Konsolu kilitle'}
+        activeOpacity={0.75}
+        onPress={handleRequestLockToggle}
+        style={[
+          styles.lockToggleBtn,
+          isConsoleLocked && styles.lockToggleBtnLocked,
+          { width: '100%' },
+        ]}>
+        <Text style={styles.lockToggleBtnText}>
+          {isConsoleLocked ? 'KİLİT AÇ (PIN)' : 'KONSOLU KİLİTLE'}
+        </Text>
+      </TouchableOpacity>
+    </View>
   );
 
   const emergency = (
@@ -317,6 +351,7 @@ export function RejiConsole() {
         peerStatus={peerStatus}
         timecodeStatus={timecodeStatus}
       />
+      <SystemMetricsPanel health={systemHealth} isolated={isBlackout} />
       <RedundancyPanel
         consoleRole={consoleRole}
         peerStatus={peerStatus}
@@ -406,6 +441,30 @@ export function RejiConsole() {
         onChangeDraft={handleMatrixDraftChange}
         onEngage={handleMatrixEngage}
         onDisengage={handleMatrixDisengage}
+      />
+
+      <ThemeStrobePanel
+        themeMix={matrixCommand.themeMix ?? 0}
+        currentTheme={currentTheme}
+        strobe={Boolean(matrixCommand.strobe)}
+        strobeSensitivity={matrixCommand.strobeSensitivity ?? 0.55}
+        micLevelDb={micLevelDb}
+        audioListening={isListeningAudio}
+        disabled={isBlackout || isConsoleLocked}
+        onSelectTheme={handleSelectTheme}
+        onThemeMixDelta={handleThemeMixDelta}
+        onStrobeSensitivityDelta={handleStrobeSensitivityDelta}
+      />
+
+      <EmojiPuzzlePanel
+        puzzlePreset={matrixCommand.puzzlePreset ?? 'none'}
+        overlayEmoji={matrixCommand.overlayEmoji ?? null}
+        waveAmplitude={matrixCommand.waveAmplitude ?? 1}
+        audioDrive={matrixCommand.audioDrive ?? 0}
+        audioListening={isListeningAudio}
+        disabled={isBlackout || isConsoleLocked}
+        onSelectPreset={handlePuzzlePreset}
+        onOverlayEmoji={handleOverlayEmoji}
       />
 
       <VirtualCrowdPanel payload={lastPayload} />

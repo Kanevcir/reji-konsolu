@@ -89,6 +89,7 @@ export type OutgoingStatus = 'ACTIVE' | 'IDLE' | 'SAFE_MODE';
  * Ağ katmanına gönderilecek sinyal sözleşmesi.
  */
 export type OutgoingPayload = {
+  /** Unix saniye (geriye uyumluluk). */
   timestamp: number;
   action: OutgoingAction;
   targetZone: OutgoingTargetZone;
@@ -109,6 +110,18 @@ export type OutgoingPayload = {
    * null = matris kapalı; cihazlar formülü kendi (x,y)+PTP t0 ile çözer.
    */
   matrix: MatrixCommand | null;
+  /**
+   * V26.0 — PTP yayın anı (ms, senkronize duvar saati).
+   * issuedAt + ptpBufferMs = targetTimestamp.
+   */
+  issuedAt: number;
+  /**
+   * V26.0 — istemcilerin komutu yürüteceği mutlak PTP ms.
+   * Jitter’dan bağımsız milisaniyelik senkron.
+   */
+  targetTimestamp: number;
+  /** V26.0 — yayın tamponu (ms). */
+  ptpBufferMs: number;
 };
 
 /** V2.1 / V9.0 — WebSocket / hibrit ağ bağlantı durumu. */

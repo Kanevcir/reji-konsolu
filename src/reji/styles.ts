@@ -2068,6 +2068,12 @@ export const rejiStyles = StyleSheet.create({
   payloadMonitor: {
     gap: 8,
   },
+  payloadPtpHint: {
+    color: '#4ADE80',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+  },
   payloadBox: {
     backgroundColor: '#05080F',
     borderRadius: 12,
@@ -2374,6 +2380,26 @@ export const rejiStyles = StyleSheet.create({
     width: '100%',
     maxWidth: 420,
   },
+  cockpitLockStack: {
+    width: '100%',
+    gap: 8,
+  },
+  simOpenBtn: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: '#052e16',
+    borderWidth: 1,
+    borderColor: '#4ADE80',
+  },
+  simOpenBtnText: {
+    color: '#BBF7D0',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
   cockpitHeaderSlot: {
     gap: 10,
   },
@@ -2480,5 +2506,286 @@ export const rejiStyles = StyleSheet.create({
   },
   cockpitStackGap: {
     gap: 10,
+  },
+
+  /** V24.0 — Visual Themes & Audio Strobe */
+  themeCard: {
+    gap: 10,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(236, 72, 153, 0.35)',
+    backgroundColor: '#0A0E18',
+  },
+  themeHint: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  themeSubHint: {
+    color: '#64748B',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  themeSwatchRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  themeSwatchBtn: {
+    flex: 1,
+    gap: 6,
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderRadius: 12,
+    borderWidth: 2,
+    backgroundColor: '#070B14',
+  },
+  themeSwatchBtnActive: {
+    backgroundColor: '#111827',
+  },
+  themeSwatchDots: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  themeSwatchDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+  },
+  themeSwatchLabel: {
+    color: '#E2E8F0',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  themeMixBar: {
+    height: 8,
+    borderRadius: 999,
+    overflow: 'hidden',
+    opacity: 0.85,
+  },
+  themeMixFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
+  themeParamRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  themeParamBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#1E293B',
+  },
+  themeParamText: {
+    color: '#E2E8F0',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  themeParamValue: {
+    flex: 1,
+    color: '#CBD5E1',
+    fontSize: 11,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+
+  /** V25.0 — Koreografi & Emoji Puzzle */
+  puzzleCard: {
+    gap: 10,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(34, 197, 94, 0.4)',
+    backgroundColor: '#070F0C',
+  },
+  puzzleHint: {
+    color: '#86EFAC',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  puzzleSubHint: {
+    color: '#64748B',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  puzzlePresetCol: {
+    gap: 8,
+  },
+  puzzlePresetBtn: {
+    gap: 4,
+    padding: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#1F2937',
+    backgroundColor: '#0A1210',
+  },
+  puzzlePresetBtnActive: {
+    borderColor: '#4ADE80',
+    backgroundColor: '#052e16',
+  },
+  puzzlePresetTitle: {
+    color: '#E2E8F0',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  puzzlePresetTitleActive: {
+    color: '#BBF7D0',
+  },
+  puzzlePresetHint: {
+    color: '#94A3B8',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  puzzleSectionTitle: {
+    color: '#94A3B8',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1,
+    marginTop: 2,
+  },
+  puzzleEmojiRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  puzzleEmojiBtn: {
+    minWidth: 52,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    alignItems: 'center',
+    backgroundColor: '#111827',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  puzzleEmojiBtnActive: {
+    borderColor: '#FACC15',
+    backgroundColor: '#422006',
+  },
+  puzzleGolBtn: {
+    minWidth: 72,
+    backgroundColor: '#14532D',
+    borderColor: '#22C55E',
+  },
+  puzzleEmojiText: {
+    color: '#F8FAFC',
+    fontSize: 22,
+    fontWeight: '800',
+  },
+  puzzleGolText: {
+    fontSize: 16,
+    letterSpacing: 2,
+  },
+  puzzleClearBtn: {
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#1E293B',
+  },
+  puzzleClearText: {
+    color: '#FCA5A5',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+
+  /** V30.0 — Sistem Metrikleri */
+  sysMetricsCard: {
+    gap: 10,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(34, 197, 94, 0.35)',
+    backgroundColor: '#0A0E18',
+  },
+  sysMetricsIsolated: {
+    opacity: 0.55,
+    borderColor: 'rgba(148, 163, 184, 0.25)',
+  },
+  sysMetricsHint: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  sysMetricsSubLabel: {
+    color: '#64748B',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+  },
+  sysMetricsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  sysMetricCell: {
+    flexGrow: 1,
+    flexBasis: '45%',
+    minWidth: 120,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    backgroundColor: '#070B14',
+    borderWidth: 1,
+    borderColor: 'rgba(148, 163, 184, 0.12)',
+    gap: 4,
+  },
+  sysMetricValue: {
+    color: '#E2E8F0',
+    fontSize: 16,
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
+  },
+  sysMetricWarn: {
+    color: '#FCA5A5',
+  },
+  sysMetricLabel: {
+    color: '#64748B',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1.1,
+  },
+  sysWorkerRow: {
+    gap: 6,
+  },
+  sysWorkerChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sysWorkerId: {
+    width: 28,
+    color: '#94A3B8',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  sysWorkerBarTrack: {
+    flex: 1,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#1E293B',
+    overflow: 'hidden',
+  },
+  sysWorkerBarFill: {
+    height: '100%',
+    borderRadius: 4,
+    backgroundColor: '#22C55E',
+  },
+  sysWorkerPct: {
+    width: 36,
+    textAlign: 'right',
+    color: '#CBD5E1',
+    fontSize: 10,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  sysMetricsFooter: {
+    color: '#64748B',
+    fontSize: 10,
+    fontWeight: '600',
+    lineHeight: 14,
   },
 });

@@ -25,10 +25,21 @@ function OutgoingPayloadMonitorComponent({
   const acknowledged = deliveryStatus === 'ACK_RECEIVED';
   const pending = deliveryStatus === 'PENDING';
   const failed = deliveryStatus === 'FAILED';
+  const ptpEta =
+    typeof payload.targetTimestamp === 'number' &&
+    typeof payload.issuedAt === 'number'
+      ? payload.targetTimestamp - payload.issuedAt
+      : null;
 
   return (
     <View style={styles.payloadMonitor}>
       <Text style={styles.sectionLabel}>CANLI YAYINLANAN SİNYAL PAKETİ (OUTGOING JSON)</Text>
+      {ptpEta != null ? (
+        <Text style={styles.payloadPtpHint}>
+          PTP targetTimestamp · buffer {payload.ptpBufferMs ?? ptpEta}ms · T+
+          {ptpEta}ms
+        </Text>
+      ) : null}
       <View style={styles.payloadBox}>
         <Text style={styles.payloadCode}>{jsonText}</Text>
       </View>

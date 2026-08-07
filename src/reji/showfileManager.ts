@@ -4,7 +4,7 @@
  */
 
 import type { MidiBinding } from './midiController';
-import type { MatrixCommand } from './pixelMapper';
+import { normalizeMatrixCommand, type MatrixCommand } from './pixelMapper';
 import type { MacroSequence } from './timelineSequencer';
 import type { SpatialZoneId } from './zoneManager';
 import { getSyncedTimestamp } from './clockSync';
@@ -111,7 +111,7 @@ export function parsePulseShowfile(
       midiBindings: Array.isArray(parsed.midiBindings)
         ? parsed.midiBindings
         : [],
-      matrix: { ...parsed.matrix, engaged: false } as MatrixCommand,
+      matrix: normalizeMatrixCommand(parsed.matrix),
       activeZones: parsed.activeZones as SpatialZoneId[],
       bpm:
         typeof parsed.bpm === 'number' && parsed.bpm > 0 ? parsed.bpm : 120,

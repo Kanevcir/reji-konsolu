@@ -17,6 +17,9 @@
  * V20.0 — Stadium Pixel Mapper & Matrix Engine.
  * V21.0 — MIDI / Tactile Hardware Mapping.
  * V22.0 — Showfile (.pulse) & SMPTE Timecode Sync.
+ * V24.0 — Visual Themes & Audio Reactive Strobe.
+ * V25.0 — Audio-Sync Wave Amplitude & Emoji Puzzle Engine.
+ * V30.0 — Admin Auth, System Telemetry & Zombie Client Purge.
  *
  * Bu hook tüm konsol state makinesini, timer interval’lerini ve
  * aksiyon handler’larını tek yerde toplar. UI katmanı yalnızca
@@ -44,6 +47,7 @@ import {
   DEFAULT_DETECTED_BPM,
   nextDetectedBpm,
   nextMicLevelDb,
+  normalizeMicLevel,
   requestMicAccessSafe,
 } from '../audioBeat';
 import { buildOutgoingPayload, createIdlePayload } from '../payload';
@@ -118,6 +122,7 @@ import {
   buildMatrixEngagedMessage,
   createIdleMatrixCommand,
   MATRIX_EFFECTS,
+  normalizeMatrixCommand,
   type MatrixCommand,
   type MatrixEffect,
 } from '../pixelMapper';
@@ -130,6 +135,32 @@ import {
   type MidiControllerStatus,
   type MidiTarget,
 } from '../midiController';
+import {
+  ccToStrobeSensitivity,
+  ccToThemeMix,
+  formatThemeLabel,
+  interpolateTheme,
+  resolveCurrentTheme,
+  shouldTriggerStrobe,
+  STROBE_COOLDOWN_MS,
+  STROBE_FLASH_MS,
+  themeIdToMix,
+  type VisualThemeId,
+} from '../visualThemes';
+import {
+  micEnergyToWaveSync,
+  type PuzzlePresetId,
+} from '../puzzleChoreography';
+import { publishStadiumLive } from '../stadiumLiveBus';
+import { SecureScaleGateway } from '../secureGateway';
+import {
+  DEFAULT_SYSTEM_HEALTH,
+  type SystemHealthSnapshot,
+} from '../systemHealth';
+import {
+  DEFAULT_PING_INTERVAL_MS,
+  DEFAULT_PONG_TIMEOUT_MS,
+} from '../zombiePurge';
 import {
   createTimecodeStatus,
   TimecodeEngine,
@@ -323,6 +354,9 @@ export function useRejiConsole() {
     createTimecodeStatus(),
   );
   const [macroSyncMode, setMacroSyncMode] = useState<'wall' | 'smpte'>('wall');
+  /** V30.0 — güvenli gateway telemetrisi (concurrent / PTP / zombie). */
+  const [systemHealth, setSystemHealth] =
+    useState<SystemHealthSnapshot>(DEFAULT_SYSTEM_HEALTH);
   /** V15.0 — karakutu rolling log (max 1000, PTP ts). */
   const [blackboxLogs, setBlackboxLogs] = useState<BlackboxEntry[]>([]);
   /** Log kimliği için artan sayaç (render’ı tetiklemez). */
@@ -335,6 +369,10 @@ export function useRejiConsole() {
   const ackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** V9.0 — gerçek hibrit network engine örneği. */
   const engineRef = useRef<NetworkEngine | null>(null);
+  /** V30.0 — auth + shard + zombie purge gateway. */
+  const gatewayRef = useRef<SecureScaleGateway | null>(null);
+  const clockSyncStatsRef = useRef(clockSyncStats);
+  clockSyncStatsRef.current = clockSyncStats;
   /** V11.0 — Art-Net encoder. */
   const artNetRef = useRef<ArtNetEngine | null>(null);
   if (!artNetRef.current) artNetRef.current = new ArtNetEngine();
@@ -352,6 +390,8 @@ export function useRejiConsole() {
   const syncSnapshotRef = useRef<RedundancySyncState | null>(null);
   const matrixCommandRef = useRef(matrixCommand);
   matrixCommandRef.current = matrixCommand;
+  const strobeLastAtRef = useRef(0);
+  const publishLiveMatrixRef = useRef<(cmd: MatrixCommand) => void>(() => {});
   const midiRef = useRef(new MidiControllerEngine());
   const midiDispatchRef = useRef<
     (target: MidiTarget, meta?: { ccValue?: number }) => void
@@ -642,8 +682,27 @@ export function useRejiConsole() {
             ? matrixCommand
             : null,
     });
+
+    // V30 — Admin Auth middleware: Theme / GOL / Strobe yalnızca ADMIN token.
+    const gateway = gatewayRef.current;
+    if (gateway) {
+      const secured = gateway.publishAdmin(payload, gateway.getAdminToken());
+      if (!secured.ok) {
+        setDeliveryStatus('FAILED');
+        pushLog('AUTH DENIED · ' + secured.code + ' · ' + action);
+        setBildirim('Yetkisiz komut · ' + secured.code);
+        setSystemHealth(gateway.getHealth(clockSyncStatsRef.current));
+        return;
+      }
+    }
+
     lastPayloadRef.current = payload;
     setLastPayload(payload);
+    try {
+      publishStadiumLive({ payload, matrix: payload.matrix });
+    } catch {
+      // simülatör bus hatası yayını bozmaz
+    }
     emitArtNet({
       active: (overrides.timerHasTime ?? timerHasTime) && !(overrides.isPaused ?? isPaused),
     });
@@ -700,6 +759,14 @@ export function useRejiConsole() {
         }
       }
     })();
+  };
+
+  publishLiveMatrixRef.current = (cmd) => {
+    if (!cmd.engaged) return;
+    publishPayload(
+      timerHasTime && !isPaused ? 'START_SHOW' : isPaused ? 'PAUSE' : 'RESET',
+      { matrix: cmd },
+    );
   };
 
   /**
@@ -820,6 +887,46 @@ export function useRejiConsole() {
       cancelled = true;
       clock.stop();
       clock.setListener(null);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /**
+   * V30.0 — SecureScaleGateway: ADMIN token, mock fleet, ping/pong zombie purge,
+   * canlı SİSTEM METRİKLERİ snapshot.
+   */
+  useEffect(() => {
+    const gateway = new SecureScaleGateway(undefined, 4);
+    gatewayRef.current = gateway;
+    gateway.start();
+    gateway.issueAdminToken('reji-console');
+    gateway.seedDemoFleet(240);
+    setSystemHealth(gateway.getHealth(clockSyncStatsRef.current));
+    pushLog('SECURE GATEWAY ONLINE · ADMIN TOKEN ISSUED · fleet 240');
+
+    const tick = () => {
+      const gw = gatewayRef.current;
+      if (!gw) return;
+      const now = Date.now();
+      gw.sendPingRound(now);
+      // ~%4 istemci pong atlamasın → stale / disconnect oranı canlı kalsın
+      gw.pongAllAlive(now, 25);
+      const purged = gw.purgeZombies(now, DEFAULT_PONG_TIMEOUT_MS);
+      if (purged.purgedIds.length > 0) {
+        // Drop edilenleri yeniden seed et (stadyum simülasyonu sürekli dolu)
+        gw.seedDemoFleet(240, now);
+        pushLog(`ZOMBIE PURGE · ${purged.purgedIds.length} sockets dropped`);
+      }
+      setSystemHealth(gw.getHealth(clockSyncStatsRef.current, now));
+    };
+
+    const id = setInterval(tick, DEFAULT_PING_INTERVAL_MS);
+    tick();
+
+    return () => {
+      clearInterval(id);
+      gateway.stop();
+      if (gatewayRef.current === gateway) gatewayRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1085,7 +1192,21 @@ export function useRejiConsole() {
   useEffect(() => {
     const engine = midiRef.current;
     void engine.start({
-      onStatus: (status) => setMidiStatus(status),
+      onStatus: (status) => {
+        setMidiStatus((prev) => {
+          if (
+            status.hardwareProfile === 'traktor_z1' &&
+            prev.hardwareProfile !== 'traktor_z1'
+          ) {
+            pushLog(
+              'MIDI AUTO PROFILE · TRAKTOR Z1 · ' +
+                (status.deviceName ?? 'Traktor'),
+            );
+            setBildirim('TRAKTOR Z1 AUTO · XF→Theme · Fader→Speed/Strobe');
+          }
+          return status;
+        });
+      },
       onAction: (target, meta) => midiDispatchRef.current(target, meta),
       onLearnComplete: (binding) => {
         pushLog(
@@ -1135,6 +1256,81 @@ export function useRejiConsole() {
 
     return () => clearInterval(intervalId);
   }, [isListeningAudio, isBlackout]);
+
+  /**
+   * Effect #V24/#V25 — Audio Reactive Strobe + Wave Amplitude sync.
+   * Mic dB → speed/waveAmplitude esnemesi; peak’te strobe flaş.
+   */
+  useEffect(() => {
+    if (!isListeningAudio || isBlackout) {
+      setMatrixCommand((prev) => {
+        const base = prev.baseSpeed ?? prev.speed;
+        if (
+          (prev.waveAmplitude ?? 1) === 1 &&
+          (prev.audioDrive ?? 0) === 0 &&
+          prev.speed === base
+        ) {
+          return prev;
+        }
+        const next = {
+          ...prev,
+          baseSpeed: base,
+          speed: base,
+          waveAmplitude: 1,
+          audioDrive: 0,
+          strobe: false,
+        };
+        queueMicrotask(() => publishLiveMatrixRef.current(next));
+        return next;
+      });
+      return;
+    }
+
+    const energy = normalizeMicLevel(micLevelDb);
+    const sync = micEnergyToWaveSync(energy);
+
+    setMatrixCommand((prev) => {
+      const base = prev.baseSpeed ?? prev.speed;
+      const speed = Math.min(
+        3,
+        Math.max(0.25, Number((base * sync.speedScale).toFixed(2))),
+      );
+      const next = {
+        ...prev,
+        baseSpeed: base,
+        speed,
+        waveAmplitude: sync.waveAmplitude,
+        audioDrive: sync.audioDrive,
+      };
+      queueMicrotask(() => publishLiveMatrixRef.current(next));
+      return next;
+    });
+
+    const cmd = matrixCommandRef.current;
+    const sens = cmd.strobeSensitivity ?? 0.55;
+    if (!shouldTriggerStrobe(micLevelDb, sens)) return;
+
+    const now = Date.now();
+    if (now - strobeLastAtRef.current < STROBE_COOLDOWN_MS) return;
+    strobeLastAtRef.current = now;
+
+    setMatrixCommand((prev) => {
+      const next = { ...prev, strobe: true };
+      queueMicrotask(() => publishLiveMatrixRef.current(next));
+      return next;
+    });
+
+    const clearId = setTimeout(() => {
+      setMatrixCommand((prev) => {
+        if (!prev.strobe) return prev;
+        const next = { ...prev, strobe: false };
+        queueMicrotask(() => publishLiveMatrixRef.current(next));
+        return next;
+      });
+    }, STROBE_FLASH_MS);
+
+    return () => clearTimeout(clearId);
+  }, [micLevelDb, isListeningAudio, isBlackout]);
 
   /** 15 sn geri sayımı başlatır; pause’u açar, beat’i sıfırlar. */
   const startCountdown = () => {
@@ -1341,11 +1537,24 @@ export function useRejiConsole() {
 
   const handleMatrixDraftChange = (next: MatrixCommand) => {
     try {
-      setMatrixCommand((prev) => ({
-        ...next,
-        engaged: prev.engaged,
-        t0: prev.engaged ? prev.t0 : next.t0,
-      }));
+      setMatrixCommand((prev) => {
+        const speedChanged = next.speed !== prev.speed;
+        return {
+          ...next,
+          engaged: prev.engaged,
+          t0: prev.engaged ? prev.t0 : next.t0,
+          baseSpeed: speedChanged
+            ? next.speed
+            : (next.baseSpeed ?? prev.baseSpeed ?? next.speed),
+          puzzlePreset: next.puzzlePreset ?? prev.puzzlePreset ?? 'none',
+          overlayEmoji:
+            next.overlayEmoji === undefined
+              ? prev.overlayEmoji
+              : next.overlayEmoji,
+          waveAmplitude: next.waveAmplitude ?? prev.waveAmplitude ?? 1,
+          audioDrive: next.audioDrive ?? prev.audioDrive ?? 0,
+        };
+      });
     } catch {
       // ignore
     }
@@ -1360,11 +1569,19 @@ export function useRejiConsole() {
       }
       const cmd = buildMatrixCommand({
         effect: matrixCommand.effect,
-        speed: matrixCommand.speed,
+        speed: matrixCommand.baseSpeed ?? matrixCommand.speed,
+        baseSpeed: matrixCommand.baseSpeed ?? matrixCommand.speed,
         hue: matrixCommand.hue,
         intensity: matrixCommand.intensity,
         angle: matrixCommand.angle,
         patternId: matrixCommand.patternId,
+        themeMix: matrixCommand.themeMix,
+        strobeSensitivity: matrixCommand.strobeSensitivity,
+        waveAmplitude: matrixCommand.waveAmplitude,
+        audioDrive: matrixCommand.audioDrive,
+        puzzlePreset: matrixCommand.puzzlePreset,
+        overlayEmoji: matrixCommand.overlayEmoji,
+        strobe: false,
         engaged: true,
       });
       setMatrixCommand(cmd);
@@ -1386,7 +1603,21 @@ export function useRejiConsole() {
 
   const handleMidiConnect = () => {
     void midiRef.current.start({
-      onStatus: (status) => setMidiStatus(status),
+      onStatus: (status) => {
+        setMidiStatus((prev) => {
+          if (
+            status.hardwareProfile === 'traktor_z1' &&
+            prev.hardwareProfile !== 'traktor_z1'
+          ) {
+            pushLog(
+              'MIDI AUTO PROFILE · TRAKTOR Z1 · ' +
+                (status.deviceName ?? 'Traktor'),
+            );
+            setBildirim('TRAKTOR Z1 AUTO · XF→Theme · Fader→Speed/Strobe');
+          }
+          return status;
+        });
+      },
       onAction: (target, meta) => midiDispatchRef.current(target, meta),
       onLearnComplete: (binding) => {
         pushLog(
@@ -1410,6 +1641,11 @@ export function useRejiConsole() {
   };
 
   const handleMidiBeginLearn = (target: MidiTarget) => {
+    const before = midiRef.current.getStatus();
+    if (before.hardwareProfile === 'traktor_z1') {
+      setBildirim('TRAKTOR AUTO PROFILE · MIDI Learn bypassed');
+      return;
+    }
     midiRef.current.beginLearn(target);
     setMidiStatus(midiRef.current.getStatus());
     setBildirim('MIDI LEARN · ' + target);
@@ -1481,7 +1717,7 @@ export function useRejiConsole() {
         })),
       });
       setActiveZones(show.activeZones);
-      setMatrixCommand({ ...show.matrix, engaged: false });
+      setMatrixCommand(normalizeMatrixCommand(show.matrix));
       if (show.bpm === 100 || show.bpm === 120 || show.bpm === 140) {
         setBpm(show.bpm);
       }
@@ -1499,7 +1735,7 @@ export function useRejiConsole() {
 
   const handleMatrixDisengage = () => {
     try {
-      const cmd = { ...matrixCommand, engaged: false };
+      const cmd = { ...matrixCommand, engaged: false, strobe: false };
       setMatrixCommand(cmd);
       recordMacroEvent('MATRIX', {
         matrixEngaged: false,
@@ -1515,6 +1751,121 @@ export function useRejiConsole() {
     }
   };
 
+  /** V24 — tema seçimi (Alev / Neon / Şampiyon). */
+  const handleSelectTheme = (id: VisualThemeId) => {
+    try {
+      if (isConsoleLocked) return;
+      const mix = themeIdToMix(id);
+      const theme = interpolateTheme(mix);
+      setMatrixCommand((prev) => {
+        const next = {
+          ...prev,
+          themeMix: mix,
+          hue: theme.hue,
+          strobe: false,
+        };
+        queueMicrotask(() => publishLiveMatrixRef.current(next));
+        return next;
+      });
+      setBildirim('THEME · ' + formatThemeLabel(id));
+      pushLog('THEME · ' + id.toUpperCase());
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleThemeMixDelta = (delta: number) => {
+    try {
+      if (isConsoleLocked) return;
+      setMatrixCommand((prev) => {
+        const mix = Math.min(1, Math.max(0, (prev.themeMix ?? 0) + delta));
+        const theme = interpolateTheme(mix);
+        const next = { ...prev, themeMix: mix, hue: theme.hue };
+        queueMicrotask(() => publishLiveMatrixRef.current(next));
+        return next;
+      });
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleStrobeSensitivityDelta = (delta: number) => {
+    try {
+      if (isConsoleLocked) return;
+      setMatrixCommand((prev) => {
+        const strobeSensitivity = Math.min(
+          1,
+          Math.max(0, Number(((prev.strobeSensitivity ?? 0.55) + delta).toFixed(2))),
+        );
+        return { ...prev, strobeSensitivity };
+      });
+    } catch {
+      // ignore
+    }
+  };
+
+  /** V25 — puzzle preset (bayrak / kupa / emoji modu). */
+  const handlePuzzlePreset = (id: PuzzlePresetId) => {
+    try {
+      if (isConsoleLocked || isBlackout) return;
+      setMatrixCommand((prev) => {
+        const next = {
+          ...prev,
+          puzzlePreset: id,
+          overlayEmoji:
+            id === 'live_emoji' || id === 'none'
+              ? prev.overlayEmoji
+              : null,
+          engaged: id === 'none' ? prev.engaged : true,
+        };
+        if (id !== 'none' && !prev.engaged) {
+          next.t0 = Date.now();
+        }
+        if (id !== 'live_emoji' && id !== 'none') {
+          next.overlayEmoji = null;
+        }
+        queueMicrotask(() => publishLiveMatrixRef.current(next));
+        return next;
+      });
+      pushLog(
+        id === 'none' ? 'PUZZLE OFF' : 'PUZZLE · ' + id.toUpperCase(),
+      );
+      setBildirim(id === 'none' ? 'Puzzle kapalı' : 'PUZZLE · ' + id);
+    } catch {
+      pushLog('PUZZLE PRESET ERROR');
+    }
+  };
+
+  /** V25 — OVERLAY_EMOJI (🔥 / ⚽ / GOL …). */
+  const handleOverlayEmoji = (glyph: string | null) => {
+    try {
+      if (isConsoleLocked || isBlackout) return;
+      setMatrixCommand((prev) => {
+        const next = {
+          ...prev,
+          overlayEmoji: glyph,
+          puzzlePreset: glyph
+            ? ('live_emoji' as PuzzlePresetId)
+            : prev.puzzlePreset,
+          engaged: glyph ? true : prev.engaged,
+          t0: glyph && !prev.engaged ? Date.now() : prev.t0,
+        };
+        queueMicrotask(() => publishLiveMatrixRef.current(next));
+        return next;
+      });
+      if (glyph) {
+        pushLog('OVERLAY_EMOJI · ' + glyph);
+        setBildirim('OVERLAY · ' + glyph);
+        void triggerImpact('heavy');
+      } else {
+        pushLog('OVERLAY_EMOJI CLEAR');
+        setBildirim('Overlay temiz');
+      }
+    } catch {
+      pushLog('OVERLAY EMOJI ERROR');
+    }
+  };
+
   const applyMatrixFromMacro = (engaged: boolean, effectName?: string) => {
     try {
       if (engaged) {
@@ -1525,11 +1876,19 @@ export function useRejiConsole() {
         );
         const cmd = buildMatrixCommand({
           effect,
-          speed: matrixCommand.speed,
+          speed: matrixCommand.baseSpeed ?? matrixCommand.speed,
+          baseSpeed: matrixCommand.baseSpeed ?? matrixCommand.speed,
           hue: matrixCommand.hue,
           intensity: matrixCommand.intensity,
           angle: matrixCommand.angle,
           patternId: matrixCommand.patternId,
+          themeMix: matrixCommand.themeMix,
+          strobeSensitivity: matrixCommand.strobeSensitivity,
+          waveAmplitude: matrixCommand.waveAmplitude,
+          audioDrive: matrixCommand.audioDrive,
+          puzzlePreset: matrixCommand.puzzlePreset,
+          overlayEmoji: matrixCommand.overlayEmoji,
+          strobe: false,
           engaged: true,
         });
         setMatrixCommand(cmd);
@@ -1877,6 +2236,11 @@ export function useRejiConsole() {
       });
       lastPayloadRef.current = payload;
       setLastPayload(payload);
+      try {
+        publishStadiumLive({ payload, matrix: null });
+      } catch {
+        // ignore
+      }
 
       void (async () => {
         try {
@@ -2440,17 +2804,19 @@ export function useRejiConsole() {
           break;
         case 'MATRIX_SPEED':
           if (typeof meta?.ccValue === 'number') {
-            const speed = ccToMatrixSpeed(meta.ccValue);
+            const baseSpeed = ccToMatrixSpeed(meta.ccValue);
             setMatrixCommand((prev) => {
-              const next = { ...prev, speed };
-              if (prev.engaged) {
-                queueMicrotask(() => {
-                  publishPayload(
-                    timerHasTime && !isPaused ? 'START_SHOW' : isPaused ? 'PAUSE' : 'RESET',
-                    { matrix: next },
-                  );
-                });
-              }
+              const drive = prev.audioDrive ?? 0;
+              const scale =
+                drive > 0.02
+                  ? micEnergyToWaveSync(drive).speedScale
+                  : 1;
+              const speed = Math.min(
+                3,
+                Math.max(0.25, Number((baseSpeed * scale).toFixed(2))),
+              );
+              const next = { ...prev, baseSpeed, speed };
+              queueMicrotask(() => publishLiveMatrixRef.current(next));
               return next;
             });
           }
@@ -2460,16 +2826,34 @@ export function useRejiConsole() {
             const intensity = ccToMatrixIntensity(meta.ccValue);
             setMatrixCommand((prev) => {
               const next = { ...prev, intensity };
-              if (prev.engaged) {
-                queueMicrotask(() => {
-                  publishPayload(
-                    timerHasTime && !isPaused ? 'START_SHOW' : isPaused ? 'PAUSE' : 'RESET',
-                    { matrix: next },
-                  );
-                });
-              }
+              queueMicrotask(() => publishLiveMatrixRef.current(next));
               return next;
             });
+          }
+          break;
+        case 'THEME_MIX':
+          if (typeof meta?.ccValue === 'number') {
+            const mix = ccToThemeMix(meta.ccValue);
+            const theme = interpolateTheme(mix);
+            setMatrixCommand((prev) => {
+              const next = {
+                ...prev,
+                themeMix: mix,
+                hue: theme.hue,
+              };
+              queueMicrotask(() => publishLiveMatrixRef.current(next));
+              return next;
+            });
+            logCritical('THEME_MIX');
+          }
+          break;
+        case 'STROBE_SENSITIVITY':
+          if (typeof meta?.ccValue === 'number') {
+            const strobeSensitivity = ccToStrobeSensitivity(meta.ccValue);
+            setMatrixCommand((prev) => ({
+              ...prev,
+              strobeSensitivity,
+            }));
           }
           break;
         default:
@@ -2504,6 +2888,7 @@ export function useRejiConsole() {
     presetSlots,
     telemetryStats,
     clockSyncStats,
+    systemHealth,
     artNetConfig,
     artNetStats,
     securityLock,
@@ -2530,6 +2915,7 @@ export function useRejiConsole() {
     consoleRole,
     peerStatus,
     matrixCommand,
+    currentTheme: resolveCurrentTheme(matrixCommand.themeMix ?? 0),
     midiStatus,
     timecodeStatus,
     macroSyncMode,
@@ -2588,6 +2974,11 @@ export function useRejiConsole() {
     handleMatrixDraftChange,
     handleMatrixEngage,
     handleMatrixDisengage,
+    handleSelectTheme,
+    handleThemeMixDelta,
+    handleStrobeSensitivityDelta,
+    handlePuzzlePreset,
+    handleOverlayEmoji,
     handleMidiConnect,
     handleMidiBeginLearn,
     handleMidiCancelLearn,

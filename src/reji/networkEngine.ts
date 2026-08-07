@@ -2,7 +2,7 @@
  * V9.0 — Hibrit Ağ Motoru (WebSocket + UDP Multicast Fallback).
  *
  * - ws:// / wss:// gerçek WebSocket yönetimi
- * - Exponential backoff reconnect: 1s → 2s → 4s → 8s
+ * - Exponential backoff + full jitter reconnect (V28 thundering herd)
  * - Tüm denemeler tükenince UDP_MULTICAST_FALLBACK
  *
  * Not: Expo Go’da native UDP API yoktur; fallback datagram bus
@@ -13,6 +13,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { getSyncedTimestamp } from './clockSync';
+import { computeReconnectDelayMs } from './reconnectBackoff';
+import {
+  getPublicWsHost,
+  getPublicWsPort,
+  getPublicWsSecure,
+  getUdpMulticastGroup,
+  getUdpMulticastPort,
+} from './runtimeConfig';
 import type { OutgoingPayload } from './types';
 
 /** V9.0 bağlantı durumları. */
@@ -51,17 +59,20 @@ export type NetworkEngineListener = {
 export const NETWORK_STORAGE_KEY = '@pulse/reji-network-v1';
 
 export const DEFAULT_NETWORK_CONFIG: NetworkConfig = {
-  host: '192.168.1.100',
-  port: 8080,
-  secure: false,
+  host: getPublicWsHost(),
+  port: getPublicWsPort(),
+  secure: getPublicWsSecure(),
 };
 
-/** LAN multicast hedefi (UDP fallback). */
-export const UDP_MULTICAST_GROUP = '239.255.90.1';
-export const UDP_MULTICAST_PORT = 9090;
+/** LAN multicast hedefi (UDP fallback) — UDP_MULTICAST_*. */
+export const UDP_MULTICAST_GROUP = getUdpMulticastGroup();
+export const UDP_MULTICAST_PORT = getUdpMulticastPort();
 
-/** Exponential backoff adımları (ms). */
+/** Exponential backoff adımları (ms) — üst sınır / deneme sayısı. */
 export const RECONNECT_BACKOFF_MS = [1000, 2000, 4000, 8000] as const;
+
+/** V28 — full jitter tabanı (thundering herd). */
+export const RECONNECT_JITTER_BASE_MS = 250;
 
 /** Host + port → ws(s):// URL. */
 export function buildWebSocketUrl(config: NetworkConfig): string {
@@ -382,9 +393,14 @@ export class NetworkEngine {
       return;
     }
 
-    const delay = RECONNECT_BACKOFF_MS[this.backoffIndex];
+    // V28 — full jitter: [0, min(cap, base*2^attempt)]
+    const cap = RECONNECT_BACKOFF_MS[this.backoffIndex] ?? 8000;
+    const delay = computeReconnectDelayMs(this.backoffIndex, {
+      baseMs: RECONNECT_JITTER_BASE_MS,
+      capMs: cap,
+    });
     this.backoffIndex += 1;
-    this.setStatus('CONNECTING', `reconnect in ${delay}ms`);
+    this.setStatus('CONNECTING', `reconnect in ${delay}ms (jitter)`);
 
     this.clearReconnectTimer();
     this.reconnectTimer = setTimeout(() => {

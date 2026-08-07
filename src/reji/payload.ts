@@ -1,9 +1,15 @@
 /**
  * V2.0 Ağ Katmanı — Outgoing Payload üreticileri.
  * Konsol aksiyonlarını ağ sözleşmesine dönüştürür.
+ * V26.0 — her yayına PTP targetTimestamp eklenir.
  */
 
 import { getSyncedUnixSeconds } from './clockSync';
+import {
+  computeEmergencyTargetTimestamp,
+  computeTargetTimestamp,
+  DEFAULT_PTP_NETWORK_BUFFER_MS,
+} from './ptpBroadcast';
 import { DEFAULT_ZONE_MASK } from './zoneManager';
 import type { MatrixCommand } from './pixelMapper';
 import type {
@@ -47,7 +53,15 @@ export function buildOutgoingPayload(input: {
   swarmProtocol?: boolean;
   /** V20.0 — matrix koreografi komutu. */
   matrix?: MatrixCommand | null;
+  /** V26 — özel PTP buffer; emergency için kısa. */
+  ptpBufferMs?: number;
+  /** V26 — acil blackout kısa buffer. */
+  emergencyPtp?: boolean;
 }): OutgoingPayload {
+  const ptp = input.emergencyPtp
+    ? computeEmergencyTargetTimestamp()
+    : computeTargetTimestamp(undefined, input.ptpBufferMs);
+
   return {
     timestamp: getSyncedUnixSeconds(),
     action: input.action,
@@ -63,6 +77,9 @@ export function buildOutgoingPayload(input: {
     zoneMask: (input.zoneMask ?? DEFAULT_ZONE_MASK) & 0b1111,
     swarmProtocol: Boolean(input.swarmProtocol),
     matrix: input.matrix ?? null,
+    issuedAt: ptp.issuedAt,
+    targetTimestamp: ptp.targetTimestamp,
+    ptpBufferMs: ptp.ptpBufferMs,
   };
 }
 
@@ -73,6 +90,10 @@ export function createIdlePayload(
   swarmProtocol: boolean = false,
   matrix: MatrixCommand | null = null,
 ): OutgoingPayload {
+  const ptp = computeTargetTimestamp(
+    undefined,
+    DEFAULT_PTP_NETWORK_BUFFER_MS,
+  );
   return {
     timestamp: getSyncedUnixSeconds(),
     action: 'RESET',
@@ -82,5 +103,8 @@ export function createIdlePayload(
     zoneMask: zoneMask & 0b1111,
     swarmProtocol,
     matrix,
+    issuedAt: ptp.issuedAt,
+    targetTimestamp: ptp.targetTimestamp,
+    ptpBufferMs: ptp.ptpBufferMs,
   };
 }

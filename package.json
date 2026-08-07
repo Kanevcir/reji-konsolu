@@ -23,6 +23,7 @@
     "expo-symbols": "~1.0.8",
     "expo-system-ui": "~6.0.9",
     "expo-web-browser": "~15.0.11",
+    "ioredis": "^5.6.1",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
@@ -31,10 +32,15 @@
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
     "react-native-web": "^0.21.0",
-    "react-native-worklets": "0.5.1"
+    "react-native-worklets": "0.5.1",
+    "ws": "^8.18.3"
   },
   "devDependencies": {
+    "@types/node": "^22.15.30",
     "@types/react": "~19.2.2",
+    "@types/ws": "^8.18.1",
+    "pm2": "^6.0.8",
+    "tsx": "^4.20.3",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -43,7 +49,22 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "build:web": "expo export -p web",
+    "server:dev": "tsx --env-file=.env.development server/src/index.ts",
+    "server:start": "pm2-runtime start server/ecosystem.config.cjs",
+    "server:pm2": "pm2 start server/ecosystem.config.cjs",
+    "test:ptp": "npx --yes tsx src/reji/simulations/runPtpOfflineSim.ts",
+    "test:mapping": "npx --yes tsx src/reji/simulations/runSeatMappingSim.ts",
+    "test:scale": "npx --yes tsx src/reji/simulations/runScaleSim.ts",
+    "test:security": "npx --yes tsx src/reji/simulations/runSecuritySim.ts",
+    "test:load": "k6 run load-test/load-test.js",
+    "test:load:smoke": "node load-test/run-smoke.mjs",
+    "test:load:smoke:k6": "k6 run -e LOADTEST_VUS=20 -e LOADTEST_RAMP_UP=5s -e LOADTEST_HOLD=15s -e LOADTEST_RAMP_DOWN=5s -e LOADTEST_SESSION_SEC=12 load-test/load-test.js",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose --env-file .env.example up --build -d",
+    "typecheck": "tsc --noEmit -p .",
+    "typecheck:server": "tsc --noEmit -p server/tsconfig.json"
   },
   "private": true
 }
