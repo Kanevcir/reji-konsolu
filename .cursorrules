@@ -92,3 +92,6 @@ Arayüzde 'Expo Starter' vb. varsayılan geliştirme kalıntıları barındırı
 
 ### Madde 120 — Canlı Üretim Ortamı ve Domain Altyapısı (teyalabs.com)
 Projenin resmi canlı domain adresi teyalabs.com'dur. Sunucudaki çakışan host Nginx servisleri devre dışı bırakılmış, tüm giriş trafiği (HTTP 80 / HTTPS 443) Docker Nginx Gateway konteynerine devredilmiştir. Gateway; Web frontend, REST API (/api/) ve WebSocket (/ws) yönlendirmelerini teyalabs.com üzerinden yürütür.
+
+### Madde 122 — Proaktif Yönetim ve Seçeneksiz Müdahale İlkesi
+AI asistanı; rutin düzeltmeler, bilinen bug-fix'ler ve standart konfigürasyon adımlarında kullanıcıya opsiyon sunarak vakit kaybettirmez. Sorunu tespit ettiği an doğrudan en optimize çözümü kod tabanında uygular, test eder ve canlı ortama (teyalabs.com) aktarır. Kullanıcı onayına sadece mimari köklü değişikliklerde veya saha müdahalesi gerektiren durumlarda başvurulur.
