@@ -1,0 +1,94 @@
+﻿---
+description: Pulse App Reji Konsolu Anayasası
+alwaysApply: true
+---
+# PULSE APP / REJİ KONSOLU - YAPAY ZEKA ANAYASASI VE PROJE DUMPU
+
+## 1. MİMARİ VE TEKNOLOJİ YIĞINI (TECH STACK)
+- **Teknoloji:** Expo 54 (Web Console), Node.js (WS/Redis server), Docker + Nginx Gateway.
+- **Hedef:** Stadyumlarda (RAMS Park vb.) 50.000-90.000 cihazla internetsiz/çevrimdışı milisaniyelik senkronize dijital koreografi (Türk Bayrağı, Aslan, ışık şovları).
+
+## 2. DOSYA VE KLASÖR YAPISI
+- `src/app/`: Expo Router (`index` -> RejiConsole, `simulator` -> Stadyum görselleştirici)
+- `src/reji/`: Çekirdek ürün (Motorlar + Mission Control panelleri)
+  - UI: `RejiConsole.tsx`, `useRejiConsole.ts` (merkezi state)
+  - Ağ: `networkEngine.ts` (WS), `offlineQueue.ts`, `redundancyEngine.ts`
+  - Senkronizasyon: `clockSync.ts`, `ptpBroadcast.ts`, `clientScheduler.ts`, `offlineResilience.ts`, `stadiumClientRuntime.ts`
+  - Simülasyonlar: `src/reji/simulations/` (PTP, mapping, scale, security)
+- `server/`: HTTP Auth + WebSocket hub, Redis fanout
+- `infra/`: Nginx gateway/web
+- `Dockerfile` & `docker-compose.yml`: Web + API + Redis + Gateway
+- `.github/workflows/deploy.yml`: Hetzner otomatik canlıya alma pipeline'ı (main branch)
+
+## 3. MEVCUT DURUM MATRIX'I
+### ✅ BAĞLI VE ÇALIŞIR DURUMDA OLANLAR
+- Mission Control panelleri
+- WebSocket + offline kuyruk mekanizması
+- PTP senkronizasyon mantığı + simülasyon testleri
+- Web MIDI entegrasyonu & quick macros
+- Docker, Nginx, SSL, Hetzner CI/CD hattı
+- AsyncStorage preset yapıları
+
+### ⚠️ EKSİK VE TASLAK (STUB) OLANLAR
+- PWA Service Worker + IndexedDB çevrimdışı depolama
+- Art-Net (Sadece encode var, wire send yok)
+- Mikrofon/BLE (Simüle edilmiş durumda)
+- UDP Fallback (Sadece bellek içi/in-memory)
+
+## 4. YAPAY ZEKA (AI) ÇALIŞMA KURALLARI
+1. **SIFIR TAHMİN & DOĞRUDAN MÜHENDİSLİK:** Pohpohlama yapma. Emin olunmayan ağ/donanım konularında doğrudan "Test edilmeli" de.
+2. **ALTYAPILARA DOKUNMA:** SSH, Docker, Nginx, SSL ve GitHub Actions adımlarını tamamlanmış kabul et, tekrar önerme.
+3. **STADYUM GERÇEĞİ:** HTTP/k6 testlerinin stadyumdaki GSM çökmesini çözmediğini bil. Tüm çözümleri İNTERNETSİZ / OFFLINE-FIRST mimaride sun.
+4. **KOD ODAĞI:** Sadece `src/` ve `server/` dizinlerindeki gerçek mimari üzerinden nokta atışı kod yaz.
+
+## 5. SAHA TESTLERİ V2 RAPORU VE KRİTİK LİMİTLER
+- **Live Runtime Testleri:** 51 / 51 (%100 Geçiyor).
+- **Playback Mimarisi:** Playhead saf fonksiyondur (`startedAtMs` epoch). Sunucu crash/restart durumunda 0 müdahale ile doğru saniyeden devam eder.
+- **Delta Dispatch:** 100ms (10Hz) frekansta sadece değişen piksel atanır. Frame teslimat başarısı %100.
+- **Çoklu-Node Redis-Lease:** Çoklu API instance çalışırken Redis-lease mekanizması lider seçemiyor, dual-dispatch yaşanıyor.
+- **Join/Auth Darboğazı:** 1000 cihazda katılım başarısı %37.5. Darboğaz WebSocket değil, Auth/Token/Handshake katmanında.
+
+## 6. MILESTONE 6 & 7: GÖRSEL ŞOV VE AI SHOW DESIGNER MİMARİSİ
+- **Çekirdek Motorlar:** 5 Temel Motor Postgres, Redis ve Socket.io canlı sunucusunda %100 doğrulandı.
+- **Font Render Fix:** NotoSans fontları `data: URI @font-face` olarak gömüldü (Türkçe karakter düzeltmesi).
+- **Crossfade Eşleşmesi:** `#7a0085` örneği beklenen `#800080` ile eşleşti.
+- **AI Show Designer:** Hibrit Prompt Parser + ShowDsl yapısı kuruldu. 21 isimli formasyon 8 primitiften türetildi.
+
+## 7. MILESTONE 8 & 9: GÜVENLİK, HESAP VE CANLI OPERATÖR PANELİ
+- **Account Lockout & Session Invalidated:** Yanlış denemelerde hesap kilitlenir, şifre sıfırlamada tüm token'lar iptal edilir.
+- **Mobil (Flutter) Operatör Panel:** `/dashboard/live-show` entegre edildi.
+- **🚨 KRİTİK FLUTTER MOBİL BUG'I:** Mobil taraftaki `_decodeJoinResponse` HTTP istemcisi `{ success: true, data: { ... } }` zarfını açmadan DTO'ya veriyor. `sessionId` ve `eventId` null düşüyor.
+
+## 8. PULSE PRODUCTION BUGFIXES & V2 ARCHITECTURE AUDIT
+- **STOP Blackout Fix:** Gereksiz `stopPulseFx()` çağrısı kaldırıldı.
+- **V2 Audit:** `T-030` (Event Isolation), `T-031` (System Degradation Ladder), `T-032` (Socket.IO Redis Adapter), `T-033` (CommandBus SLA <100ms), `T-034` (Sticky Session), `T-035` (Storage Abstraction S3/Local) tamamlandı.
+
+## 9. REJİ EK PROTOKOLLERİ
+### Madde 117 — CI/CD Sıfır Dokunuş Yayınlama Protokolü (Zero-Touch Deploy)
+Canlı sunucuya güncelleme çıkılırken manuel SSH bağlantısı veya komut satırı müdahalesi yapılmaz. Yerel testlerden geçen kod git push ile depoya gönderildiği an yayınlama sorumluluğu tamamen otomasyona (GitHub Actions & Docker Compose) devredilir.
+
+### Madde 118 — Test İzolatörlerinde Güvenli Varsayılan (Defensive Fallback) Zorunluluğu
+Monorepo mimarisinde paketler arası sabitlerin (CHOREO_POSITIONS vb.) birincil derleme veya test mock ortamlarında undefined kalma riskine karşı, servis metotlarında mutlaka güvenli varsayılan (fallback) değerler kullanılır. Test runner çökmesi, üretim ortamı mantığını (production code) kıramaz.
+
+### Madde 119 — Tam Yeşil Kapı Kuralı (Green Gate Rule)
+Backend (api) ve Mobil (pulse_mobile) paketlerinde %100 PASS (Örn: 695/695 test) elde edilmeden hiçbir kod değişikliği main veya pulse-recovery dallarına git push ile gönderilemez. Tek bir kırık test, tüm dağıtım sürecini durdurma sebebidir.
+
+
+### Madde 119/B — Reji Konsolu UI ve Donanım Entegrasyon Standardı
+Arayüzde 'Expo Starter' vb. varsayılan geliştirme kalıntıları barındırılamaz. MIDI donanım entegrasyonu Zone 1 (Z1 Note 1/2/3 - Ch1) kanalları üzerinden makro, drop ve blackout kontrolü sağlayan fiziksel reji konsolu standartlarına tabidir. WebSocket istemcisi yerel 127.0.0.1 adresine değil, canlı ortamda teyalabs.com/ws endpoint'ine bağlanır.
+
+### Madde 120 — Canlı Üretim Ortamı ve Domain Altyapısı (teyalabs.com)
+Projenin resmi canlı domain adresi teyalabs.com'dur. Sunucudaki çakışan host Nginx servisleri devre dışı bırakılmış, tüm giriş trafiği (HTTP 80 / HTTPS 443) Docker Nginx Gateway konteynerine devredilmiştir. Gateway; Web frontend, REST API (/api/) ve WebSocket (/ws) yönlendirmelerini teyalabs.com üzerinden yürütür.
+
+
+### Madde 117 — CI/CD Sıfır Dokunuş Yayınlama Protokolü (Zero-Touch Deploy)
+Canlı sunucuya güncelleme çıkılırken manuel SSH bağlantısı veya komut satırı müdahalesi yapılmaz. Yerel testlerden geçen kod git push ile depoya gönderildiği an yayınlama sorumluluğu tamamen otomasyona devredilir.
+
+### Madde 118 — Test İzolatörlerinde Güvenli Varsayılan Zorunluluğu
+Monorepo mimarisinde paketler arası sabitlerin undefined kalma riskine karşı, servis metotlarında mutlaka güvenli varsayılan değerler kullanılır.
+
+### Madde 119/B — Reji Konsolu UI ve Donanım Entegrasyon Standardı
+Arayüzde 'Expo Starter' vb. varsayılan geliştirme kalıntıları barındırılamaz. MIDI donanım entegrasyonu Zone 1 (Z1 Note 1/2/3 - Ch1) kanalları üzerinden makro, drop ve blackout kontrolü sağlayan fiziksel reji konsolu standartlarına tabidir. WebSocket istemcisi yerel 127.0.0.1 adresine değil, canlı ortamda teyalabs.com/ws endpoint'ine bağlanır.
+
+### Madde 120 — Canlı Üretim Ortamı ve Domain Altyapısı (teyalabs.com)
+Projenin resmi canlı domain adresi teyalabs.com'dur. Sunucudaki çakışan host Nginx servisleri devre dışı bırakılmış, tüm giriş trafiği (HTTP 80 / HTTPS 443) Docker Nginx Gateway konteynerine devredilmiştir. Gateway; Web frontend, REST API (/api/) ve WebSocket (/ws) yönlendirmelerini teyalabs.com üzerinden yürütür.

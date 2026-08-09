@@ -162,6 +162,14 @@ import {
   DEFAULT_PONG_TIMEOUT_MS,
 } from '../zombiePurge';
 import {
+  buildQuickMacroMatrix,
+  getQuickMacro,
+  quickMacroOutgoingAction,
+  SUPER_GOL_STROBE_MS,
+  type QuickMacroId,
+} from '../quickMacros';
+import { authorizeAdminCommand } from '../connectionAuth';
+import {
   createTimecodeStatus,
   TimecodeEngine,
   type TimecodeStatus,
@@ -357,6 +365,10 @@ export function useRejiConsole() {
   /** V30.0 — güvenli gateway telemetrisi (concurrent / PTP / zombie). */
   const [systemHealth, setSystemHealth] =
     useState<SystemHealthSnapshot>(DEFAULT_SYSTEM_HEALTH);
+  /** V32.0 — aktif hızlı makro (UI highlight). */
+  const [activeQuickMacro, setActiveQuickMacro] = useState<QuickMacroId | null>(
+    null,
+  );
   /** V15.0 — karakutu rolling log (max 1000, PTP ts). */
   const [blackboxLogs, setBlackboxLogs] = useState<BlackboxEntry[]>([]);
   /** Log kimliği için artan sayaç (render’ı tetiklemez). */
@@ -373,6 +385,8 @@ export function useRejiConsole() {
   const gatewayRef = useRef<SecureScaleGateway | null>(null);
   const clockSyncStatsRef = useRef(clockSyncStats);
   clockSyncStatsRef.current = clockSyncStats;
+  /** V32 — SUPER_GOL strobe timeout. */
+  const quickMacroStrobeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** V11.0 — Art-Net encoder. */
   const artNetRef = useRef<ArtNetEngine | null>(null);
   if (!artNetRef.current) artNetRef.current = new ArtNetEngine();
@@ -1202,7 +1216,7 @@ export function useRejiConsole() {
               'MIDI AUTO PROFILE · TRAKTOR Z1 · ' +
                 (status.deviceName ?? 'Traktor'),
             );
-            setBildirim('TRAKTOR Z1 AUTO · XF→Theme · Fader→Speed/Strobe');
+            setBildirim('TRAKTOR Z1 AUTO · Note1–3 Makro · XF Theme');
           }
           return status;
         });
@@ -1613,7 +1627,7 @@ export function useRejiConsole() {
               'MIDI AUTO PROFILE · TRAKTOR Z1 · ' +
                 (status.deviceName ?? 'Traktor'),
             );
-            setBildirim('TRAKTOR Z1 AUTO · XF→Theme · Fader→Speed/Strobe');
+            setBildirim('TRAKTOR Z1 AUTO · Note1–3 Makro · XF Theme');
           }
           return status;
         });
@@ -1771,6 +1785,73 @@ export function useRejiConsole() {
       pushLog('THEME · ' + id.toUpperCase());
     } catch {
       // ignore
+    }
+  };
+
+  /**
+   * V32 — Hızlı makro motoru.
+   * Admin JWT (authorizeAdminCommand) + PTP targetTimestamp publishPayload üzerinden.
+   */
+  const handleQuickMacro = (id: QuickMacroId) => {
+    try {
+      if (isConsoleLocked && id !== 'BLACKOUT_RESET') {
+        pushLog('MACRO IGNORED (LOCKED) · ' + id);
+        return;
+      }
+
+      const def = getQuickMacro(id);
+      const action = quickMacroOutgoingAction(id);
+      const adminTok = gatewayRef.current?.getAdminToken() ?? null;
+      const gate = authorizeAdminCommand(adminTok, action);
+      if (!gate.ok) {
+        pushLog('MACRO AUTH DENIED · ' + gate.code + ' · ' + id);
+        setBildirim('Makro yetkisiz · ' + gate.code);
+        return;
+      }
+
+      if (quickMacroStrobeRef.current) {
+        clearTimeout(quickMacroStrobeRef.current);
+        quickMacroStrobeRef.current = null;
+      }
+
+      const nextMatrix = buildQuickMacroMatrix(id, matrixCommandRef.current);
+      setActiveQuickMacro(id);
+      setMatrixCommand(nextMatrix);
+      matrixCommandRef.current = nextMatrix;
+
+      if (id === 'BLACKOUT_RESET') {
+        // Matrix zaten temizlendi; acil blackout PTP SAFE_MODE yayınlar.
+        handleBlackoutActivate();
+        setBildirim('MACRO · BLACKOUT RESET · hız %50');
+        pushLog(buildMidiTriggeredMessage('MACRO_BLACKOUT_RESET'));
+        return;
+      }
+
+      publishPayload('START_SHOW', {
+        matrix: nextMatrix,
+        timerHasTime: true,
+        isPaused: false,
+      });
+      setSistemDurumu(LIVE_STATUS);
+      setMode('live');
+      setBildirim('MACRO · ' + def.labelTr);
+      pushLog(buildMidiTriggeredMessage('MACRO_' + id));
+
+      if (id === 'SUPER_GOL' && def.strobeMs > 0) {
+        quickMacroStrobeRef.current = setTimeout(() => {
+          quickMacroStrobeRef.current = null;
+          setMatrixCommand((prev) => {
+            if (!prev.strobe) return prev;
+            const cleared = { ...prev, strobe: false };
+            matrixCommandRef.current = cleared;
+            queueMicrotask(() => publishLiveMatrixRef.current(cleared));
+            return cleared;
+          });
+          pushLog('MACRO SUPER_GOL · STROBE END (' + SUPER_GOL_STROBE_MS + 'ms)');
+        }, def.strobeMs);
+      }
+    } catch {
+      pushLog('MACRO ERROR · ' + id);
     }
   };
 
@@ -2791,6 +2872,18 @@ export function useRejiConsole() {
         case 'MACRO_REC':
           handleMacroRecord();
           break;
+        case 'MACRO_SUPER_GOL':
+          logCritical('MACRO_SUPER_GOL');
+          handleQuickMacro('SUPER_GOL');
+          break;
+        case 'MACRO_DROP_THE_BASS':
+          logCritical('MACRO_DROP_THE_BASS');
+          handleQuickMacro('DROP_THE_BASS');
+          break;
+        case 'MACRO_BLACKOUT_RESET':
+          logCritical('MACRO_BLACKOUT_RESET');
+          handleQuickMacro('BLACKOUT_RESET');
+          break;
         case 'SWARM_TOGGLE':
           logCritical('SWARM_TOGGLE');
           handleSwarmToggle();
@@ -2889,6 +2982,7 @@ export function useRejiConsole() {
     telemetryStats,
     clockSyncStats,
     systemHealth,
+    activeQuickMacro,
     artNetConfig,
     artNetStats,
     securityLock,
@@ -2975,6 +3069,7 @@ export function useRejiConsole() {
     handleMatrixEngage,
     handleMatrixDisengage,
     handleSelectTheme,
+    handleQuickMacro,
     handleThemeMixDelta,
     handleStrobeSensitivityDelta,
     handlePuzzlePreset,

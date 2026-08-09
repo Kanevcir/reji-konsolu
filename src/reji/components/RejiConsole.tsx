@@ -42,6 +42,7 @@ import { OutgoingPayloadMonitor } from './OutgoingPayloadMonitor';
 import { StatusPanel } from './StatusPanel';
 import { TelemetryStrip } from './TelemetryStrip';
 import { SystemMetricsPanel } from './SystemMetricsPanel';
+import { QuickMacrosPanel } from './QuickMacrosPanel';
 import { VirtualStadium } from './VirtualStadium';
 import { MissionControlDashboard } from './MissionControlDashboard';
 
@@ -73,6 +74,7 @@ export function RejiConsole() {
     telemetryStats,
     clockSyncStats,
     systemHealth,
+    activeQuickMacro,
     artNetConfig,
     artNetStats,
     securityLock,
@@ -152,6 +154,7 @@ export function RejiConsole() {
     handleMatrixEngage,
     handleMatrixDisengage,
     handleSelectTheme,
+    handleQuickMacro,
     handleThemeMixDelta,
     handleStrobeSensitivityDelta,
     handlePuzzlePreset,
@@ -352,6 +355,16 @@ export function RejiConsole() {
         timecodeStatus={timecodeStatus}
       />
       <SystemMetricsPanel health={systemHealth} isolated={isBlackout} />
+      <QuickMacrosPanel
+        activeMacroId={activeQuickMacro}
+        disabled={isConsoleLocked}
+        midiHints={{
+          SUPER_GOL: 'Z1 Note 1 · Ch1',
+          DROP_THE_BASS: 'Z1 Note 2 · Ch1',
+          BLACKOUT_RESET: 'Z1 Note 3 · Ch1',
+        }}
+        onFire={handleQuickMacro}
+      />
       <RedundancyPanel
         consoleRole={consoleRole}
         peerStatus={peerStatus}

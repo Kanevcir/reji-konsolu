@@ -154,6 +154,18 @@ export type {
 } from './secureGateway';
 export { SystemMetricsPanel } from './components/SystemMetricsPanel';
 export {
+  QUICK_MACROS,
+  SUPER_GOL_STROBE_MS,
+  MACRO_SPEED_FULL,
+  MACRO_SPEED_BASE_50,
+  buildQuickMacroMatrix,
+  formatQuickMacroLabel,
+  getQuickMacro,
+  quickMacroOutgoingAction,
+} from './quickMacros';
+export type { QuickMacroId, QuickMacroDef } from './quickMacros';
+export { QuickMacrosPanel } from './components/QuickMacrosPanel';
+export {
   SeatOnboardingAuth,
   seatToPixel,
   seatKeyOf,
@@ -373,6 +385,7 @@ export {
   MIDI_LEARN_TARGETS,
   DEFAULT_MIDI_BINDINGS,
   TRAKTOR_Z1_BINDINGS,
+  TRAKTOR_Z1_NOTE_TARGETS,
   MidiControllerEngine,
   buildMidiTriggeredMessage,
   ccToMatrixSpeed,

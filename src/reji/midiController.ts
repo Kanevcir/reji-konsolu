@@ -8,7 +8,11 @@
  *   1. CC (crossfader) → THEME_MIX
  *   2. CC (fader) → MATRIX_SPEED
  *   3. CC (fader) → STROBE_SENSITIVITY
- *   Note On → BLACKOUT
+ * V32.0 — Traktor Note makroları:
+ *   Note 0 → BLACKOUT
+ *   Note 1 → MACRO_SUPER_GOL
+ *   Note 2 → MACRO_DROP_THE_BASS
+ *   Note 3 → MACRO_BLACKOUT_RESET
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -44,6 +48,9 @@ export type MidiTarget =
   | 'MACRO_PLAY'
   | 'MACRO_STOP'
   | 'MACRO_REC'
+  | 'MACRO_SUPER_GOL'
+  | 'MACRO_DROP_THE_BASS'
+  | 'MACRO_BLACKOUT_RESET'
   | 'SWARM_TOGGLE'
   | 'MATRIX_ENGAGE'
   | 'MATRIX_STOP'
@@ -92,6 +99,9 @@ export const MIDI_LEARN_TARGETS: readonly MidiTarget[] = [
   'MACRO_PLAY',
   'MACRO_STOP',
   'MACRO_REC',
+  'MACRO_SUPER_GOL',
+  'MACRO_DROP_THE_BASS',
+  'MACRO_BLACKOUT_RESET',
   'SWARM_TOGGLE',
   'MATRIX_ENGAGE',
   'MATRIX_STOP',
@@ -111,6 +121,9 @@ export const DEFAULT_MIDI_BINDINGS: MidiBinding[] = [
   { target: 'MACRO_PLAY', kind: 'note', channel: 0, number: 48 },
   { target: 'MACRO_STOP', kind: 'note', channel: 0, number: 49 },
   { target: 'MACRO_REC', kind: 'note', channel: 0, number: 50 },
+  { target: 'MACRO_SUPER_GOL', kind: 'note', channel: 0, number: 1 },
+  { target: 'MACRO_DROP_THE_BASS', kind: 'note', channel: 0, number: 2 },
+  { target: 'MACRO_BLACKOUT_RESET', kind: 'note', channel: 0, number: 3 },
   { target: 'SWARM_TOGGLE', kind: 'note', channel: 0, number: 52 },
   { target: 'MATRIX_ENGAGE', kind: 'note', channel: 0, number: 56 },
   { target: 'MATRIX_STOP', kind: 'note', channel: 0, number: 57 },
@@ -120,13 +133,29 @@ export const DEFAULT_MIDI_BINDINGS: MidiBinding[] = [
   { target: 'STROBE_SENSITIVITY', kind: 'cc', channel: 0, number: 11 },
 ];
 
-/** Traktor Kontrol Z1 — UI için bilinen varsayılanlar. */
+/**
+ * Traktor Kontrol Z1 — boşta Note pad’ler → hızlı makrolar.
+ * Note 0: acil BLACKOUT (mevcut)
+ * Note 1–3: SUPER_GOL / DROP_THE_BASS / BLACKOUT_RESET
+ * CC 1–3: Theme / Speed / Strobe (dinamik ilk-üç atama da geçerli)
+ */
 export const TRAKTOR_Z1_BINDINGS: MidiBinding[] = [
   { target: 'BLACKOUT', kind: 'note', channel: 0, number: 0 },
+  { target: 'MACRO_SUPER_GOL', kind: 'note', channel: 0, number: 1 },
+  { target: 'MACRO_DROP_THE_BASS', kind: 'note', channel: 0, number: 2 },
+  { target: 'MACRO_BLACKOUT_RESET', kind: 'note', channel: 0, number: 3 },
   { target: 'THEME_MIX', kind: 'cc', channel: 0, number: 1 },
   { target: 'MATRIX_SPEED', kind: 'cc', channel: 0, number: 2 },
   { target: 'STROBE_SENSITIVITY', kind: 'cc', channel: 0, number: 3 },
 ];
+
+/** Z1 Note → makro / blackout haritası (auto profile). */
+export const TRAKTOR_Z1_NOTE_TARGETS: Readonly<Record<number, MidiTarget>> = {
+  0: 'BLACKOUT',
+  1: 'MACRO_SUPER_GOL',
+  2: 'MACRO_DROP_THE_BASS',
+  3: 'MACRO_BLACKOUT_RESET',
+};
 
 export function formatMidiTargetLabel(target: MidiTarget): string {
   return target.replace(/_/g, ' ');
@@ -154,9 +183,9 @@ export function ccToMatrixIntensity(value: number): number {
   return Number((Math.max(0, Math.min(127, value)) / 127).toFixed(2));
 }
 
-/** Kilitliyken yalnızca BLACKOUT geçer. */
+/** Kilitliyken BLACKOUT + BLACKOUT_RESET geçer. */
 export function isMidiAllowedWhenLocked(target: MidiTarget): boolean {
-  return target === 'BLACKOUT';
+  return target === 'BLACKOUT' || target === 'MACRO_BLACKOUT_RESET';
 }
 
 export function isMidiSupported(): boolean {
@@ -417,7 +446,7 @@ export class MidiControllerEngine {
         console.log(
           '[MIDI] TRAKTOR AUTO PROFILE ·',
           this.deviceName,
-          '· XF→THEME · Fader→SPEED/STROBE · NoteOn→BLACKOUT',
+          '· XF→THEME · Fader→SPEED/STROBE · Note1–3→MACRO · Note0→BLACKOUT',
         );
       } catch {
         // ignore
@@ -575,11 +604,14 @@ export class MidiControllerEngine {
   }
 
   /**
-   * Traktor Kontrol Z1 auto map (V24):
+   * Traktor Kontrol Z1 auto map (V24 + V32):
    * - 1. benzersiz CC (crossfader) → THEME_MIX
    * - 2. benzersiz CC → MATRIX_SPEED
    * - 3+ CC → STROBE_SENSITIVITY
-   * - Note On → BLACKOUT
+   * - Note 0 → BLACKOUT
+   * - Note 1 → MACRO_SUPER_GOL
+   * - Note 2 → MACRO_DROP_THE_BASS
+   * - Note 3 → MACRO_BLACKOUT_RESET
    */
   private resolveTraktorCcRole(ccNumber: number): TraktorCcRole {
     const existing = this.traktorCcRoles.get(ccNumber);
@@ -628,11 +660,22 @@ export class MidiControllerEngine {
     }
 
     if (kind === 'note') {
+      const target = TRAKTOR_Z1_NOTE_TARGETS[number];
+      if (!target) {
+        try {
+          console.log(
+            `[MIDI] TRAKTOR Note ${number} ignored (no macro binding)`,
+          );
+        } catch {
+          // ignore
+        }
+        return;
+      }
       try {
         console.log(
-          `[MIDI] TRAKTOR → BLACKOUT · ch=${channel + 1} · note=${number}`,
+          `[MIDI] TRAKTOR → ${target} · ch=${channel + 1} · note=${number}`,
         );
-        this.handlers?.onAction?.('BLACKOUT');
+        this.handlers?.onAction?.(target);
       } catch {
         // ignore
       }

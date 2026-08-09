@@ -2788,4 +2788,60 @@ export const rejiStyles = StyleSheet.create({
     fontWeight: '600',
     lineHeight: 14,
   },
+
+  /** V32.0 — Hızlı Makrolar */
+  quickMacroCard: {
+    gap: 10,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(250, 204, 21, 0.35)',
+    backgroundColor: '#0A0E18',
+  },
+  quickMacroHint: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  quickMacroList: {
+    gap: 8,
+  },
+  quickMacroBtn: {
+    gap: 4,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(148, 163, 184, 0.2)',
+    backgroundColor: '#070B14',
+  },
+  quickMacroBtnGol: {
+    borderColor: 'rgba(248, 250, 252, 0.45)',
+  },
+  quickMacroBtnDrop: {
+    borderColor: 'rgba(168, 85, 247, 0.45)',
+  },
+  quickMacroBtnReset: {
+    borderColor: 'rgba(239, 68, 68, 0.45)',
+  },
+  quickMacroBtnActive: {
+    backgroundColor: 'rgba(250, 204, 21, 0.12)',
+  },
+  quickMacroBtnTitle: {
+    color: '#F8FAFC',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 1.1,
+  },
+  quickMacroBtnHint: {
+    color: '#94A3B8',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  quickMacroMidi: {
+    color: '#FACC15',
+    fontSize: 10,
+    fontWeight: '800',
+    marginTop: 2,
+  },
 });

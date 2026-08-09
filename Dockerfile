@@ -36,8 +36,7 @@ ENV EXPO_PUBLIC_APP_ENV=$EXPO_PUBLIC_APP_ENV \
     EXPO_PUBLIC_JWT_SECRET=$EXPO_PUBLIC_JWT_SECRET \
     EXPO_PUBLIC_PTP_NETWORK_BUFFER_MS=$EXPO_PUBLIC_PTP_NETWORK_BUFFER_MS
 
-RUN npx expo export -p web
-
+    RUN npm ci --omit=optional && npm install lightningcss-linux-x64-gnu && npx expo export -p web
 # ─── Nginx static frontend ──────────────────────────────────
 FROM nginx:1.27-alpine AS web
 COPY infra/nginx-web.conf /etc/nginx/conf.d/default.conf

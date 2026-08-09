@@ -12,13 +12,13 @@
  *   k6 run -e LOADTEST_VUS=50 -e LOADTEST_RAMP_UP=10s -e LOADTEST_HOLD=30s load-test/load-test.js
  *
  * Full stadium (needs cluster + OS fd limits):
- *   k6 run -e LOADTEST_VUS=50000 load-test/load-test.js
+ *   k6 run -e LOADTEST_VUS=500 load-test/load-test.js
  */
 
-import http from 'k6/http';
-import ws from 'k6/ws';
 import { check, sleep } from 'k6';
+import http from 'k6/http';
 import { Counter, Rate, Trend } from 'k6/metrics';
+import ws from 'k6/ws';
 
 const BASE_URL = __ENV.LOADTEST_BASE_URL || 'http://127.0.0.1:8080';
 const WS_URL = __ENV.LOADTEST_WS_URL || 'ws://127.0.0.1:8080/ws';

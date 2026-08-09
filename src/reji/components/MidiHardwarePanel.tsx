@@ -60,7 +60,7 @@ function MidiHardwarePanelComponent({
       <Text style={styles.midiSubHint}>
         PROFILE: {formatMidiHardwareProfile(status.hardwareProfile)}
         {autoProfile
-          ? ' · XF→Theme · Fader→Speed/Strobe · Note→BLACKOUT'
+          ? ' · XF→Theme · Fader→Speed/Strobe · Note1–3→Makro · Note0→BLACKOUT'
           : learning
             ? ` · MIDI LEARN · ${formatMidiTargetLabel(learning)} — fiziksel tuşa/fader’a bas`
             : ' · Pad → Zone/Macro/Blackout · CC fader → Matrix/Theme/Strobe'}
