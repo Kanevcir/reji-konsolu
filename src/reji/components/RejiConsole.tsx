@@ -1,7 +1,7 @@
-/**
- * Reji Kontrol Konsolu — V23 Mission Control Cockpit girişi.
- * State/efekt yok; tüm mantık `useRejiConsole` hook’undan gelir.
- * Layout: MissionControlDashboard (sol / orta / sağ).
+﻿/**
+ * Reji Kontrol Konsolu â€” V23 Mission Control Cockpit giriÅŸi.
+ * State/efekt yok; tÃ¼m mantÄ±k `useRejiConsole` hookâ€™undan gelir.
+ * Layout: MissionControlDashboard (sol / orta / saÄŸ).
  */
 
 import { Alert, Platform, Text, TouchableOpacity, View } from 'react-native';
@@ -176,16 +176,16 @@ export function RejiConsole() {
   const socketOnline = linkStatus === 'CONNECTED';
   const socketLabel = formatSocketLabel(socketStatus, networkEndpoint);
 
-  /** V23 — kilitliyken bile BLACKOUT ateşlenebilir. */
+  /** V23 â€” kilitliyken bile BLACKOUT ateÅŸlenebilir. */
   const canTriggerBlackout = criticalEnabled || isConsoleLocked || isBlackout;
   const opsEnabled = criticalEnabled && !isConsoleLocked;
 
   const requestBlackoutExit = () => {
     Alert.alert(
-      'Güvenli Moddan Çıkış',
-      'Sistem IDLE moda dönecek. Onaylıyor musunuz?',
+      'GÃ¼venli Moddan Ã‡Ä±kÄ±ÅŸ',
+      'Sistem IDLE moda dÃ¶necek. OnaylÄ±yor musunuz?',
       [
-        { text: 'İptal', style: 'cancel' },
+        { text: 'Ä°ptal', style: 'cancel' },
         {
           text: 'Onayla',
           style: 'destructive',
@@ -200,7 +200,7 @@ export function RejiConsole() {
       <View style={styles.headerSecurityRow}>
         <TouchableOpacity
           accessibilityRole="button"
-          accessibilityLabel="Operatör rolü"
+          accessibilityLabel="OperatÃ¶r rolÃ¼"
           activeOpacity={0.75}
           disabled={isConsoleLocked}
           onPress={handleCycleOperatorRole}
@@ -217,7 +217,7 @@ export function RejiConsole() {
         <View style={[styles.signalDot, { backgroundColor: signalAccent }]} />
         <Text style={styles.signalText}>{sistemDurumu}</Text>
         <Text style={styles.bpmDetail}>
-          {effectiveBpm} BPM{isListeningAudio ? ' · AUTO' : ''}
+          {effectiveBpm} BPM{isListeningAudio ? ' Â· AUTO' : ''}
         </Text>
         <TouchableOpacity
           accessibilityRole="button"
@@ -275,15 +275,15 @@ export function RejiConsole() {
     <View style={styles.cockpitLockStack}>
       <TouchableOpacity
         accessibilityRole="button"
-        accessibilityLabel="Stadyum simülatörünü aç"
+        accessibilityLabel="Stadyum simÃ¼latÃ¶rÃ¼nÃ¼ aÃ§"
         activeOpacity={0.75}
         onPress={openStadiumSimulator}
         style={styles.simOpenBtn}>
-        <Text style={styles.simOpenBtnText}>STADYUM SİMÜLATÖRÜNÜ AÇ</Text>
+        <Text style={styles.simOpenBtnText}>STADYUM SÄ°MÃœLATÃ–RÃœNÃœ AÃ‡</Text>
       </TouchableOpacity>
       <TouchableOpacity
         accessibilityRole="button"
-        accessibilityLabel={isConsoleLocked ? 'Kilit aç' : 'Konsolu kilitle'}
+        accessibilityLabel={isConsoleLocked ? 'Kilit aÃ§' : 'Konsolu kilitle'}
         activeOpacity={0.75}
         onPress={handleRequestLockToggle}
         style={[
@@ -292,7 +292,7 @@ export function RejiConsole() {
           { width: '100%' },
         ]}>
         <Text style={styles.lockToggleBtnText}>
-          {isConsoleLocked ? 'KİLİT AÇ (PIN)' : 'KONSOLU KİLİTLE'}
+          {isConsoleLocked ? 'KÄ°LÄ°T AÃ‡ (PIN)' : 'KONSOLU KÄ°LÄ°TLE'}
         </Text>
       </TouchableOpacity>
     </View>
@@ -319,7 +319,7 @@ export function RejiConsole() {
       ]}>
       <Text style={styles.cockpitEmergencyText}>
         {isBlackout
-          ? 'EMERGENCY BLACKOUT ACTIVE — TAP TO EXIT'
+          ? 'EMERGENCY BLACKOUT ACTIVE â€” TAP TO EXIT'
           : 'EMERGENCY BLACKOUT'}
       </Text>
     </TouchableOpacity>
@@ -359,9 +359,9 @@ export function RejiConsole() {
         activeMacroId={activeQuickMacro}
         disabled={isConsoleLocked}
         midiHints={{
-          SUPER_GOL: 'Z1 Note 1 · Ch1',
-          DROP_THE_BASS: 'Z1 Note 2 · Ch1',
-          BLACKOUT_RESET: 'Z1 Note 3 · Ch1',
+          SUPER_GOL: 'Z1 Note 1 Â· Ch1',
+          DROP_THE_BASS: 'Z1 Note 2 Â· Ch1',
+          BLACKOUT_RESET: 'Z1 Note 3 Â· Ch1',
         }}
         onFire={handleQuickMacro}
       />
@@ -415,7 +415,7 @@ export function RejiConsole() {
       />
 
       <View style={[styles.timerPanel, timerHasTime && styles.timerPanelActive]}>
-        <Text style={styles.timerLabel}>KALAN SÜRE</Text>
+        <Text style={styles.timerLabel}>KALAN SÃœRE</Text>
         <Text style={[styles.timerValue, timerHasTime && styles.timerValueActive]}>
           {formatSure(kalanSure)}
         </Text>
@@ -490,7 +490,7 @@ export function RejiConsole() {
       />
 
       <View style={styles.block}>
-        <Text style={styles.sectionLabel}>TRİBÜN SEÇİMİ</Text>
+        <Text style={styles.sectionLabel}>TRÄ°BÃœN SEÃ‡Ä°MÄ°</Text>
         <View style={styles.segmentRow}>
           {TRIBUNES.map((tribun) => {
             const active = selectedTribun === tribun.id;
@@ -521,7 +521,7 @@ export function RejiConsole() {
       </View>
 
       <View style={styles.block}>
-        <Text style={styles.sectionLabel}>HAZIR KOREOGRAFİ SENARYOLARI</Text>
+        <Text style={styles.sectionLabel}>HAZIR KOREOGRAFÄ° SENARYOLARI</Text>
         <View style={styles.scenarioList}>
           {SCENARIOS.map((scenario) => {
             const active = selectedScenario === scenario.id;
@@ -631,7 +631,7 @@ export function RejiConsole() {
             timerRunning && styles.metricPanelLiveGreen,
             !timerHasTime && isSync && styles.metricPanelSync,
           ]}>
-          <Text style={styles.metricLabel}>Bağlı Tribün Modülü</Text>
+          <Text style={styles.metricLabel}>BaÄŸlÄ± TribÃ¼n ModÃ¼lÃ¼</Text>
           <Text
             style={[
               styles.metricValue,
@@ -649,7 +649,7 @@ export function RejiConsole() {
       </View>
 
       <View style={styles.bpmCard}>
-        <Text style={styles.sectionLabel}>RİTİM HIZI (BPM)</Text>
+        <Text style={styles.sectionLabel}>RÄ°TÄ°M HIZI (BPM)</Text>
         <TouchableOpacity
           accessibilityRole="button"
           accessibilityState={{ selected: isListeningAudio }}
@@ -669,8 +669,8 @@ export function RejiConsole() {
               isListeningAudio && styles.audioListenBtnTextActive,
             ]}>
             {isListeningAudio
-              ? `CANLI SESİ DİNLE (AUTO BPM) · ${detectedBpm}`
-              : 'CANLI SESİ DİNLE (AUTO BPM)'}
+              ? `CANLI SESÄ° DÄ°NLE (AUTO BPM) Â· ${detectedBpm}`
+              : 'CANLI SESÄ° DÄ°NLE (AUTO BPM)'}
           </Text>
         </TouchableOpacity>
 
@@ -715,7 +715,7 @@ export function RejiConsole() {
                     active && styles.bpmBtnTextActive,
                   ]}>
                   {value === DEFAULT_BPM
-                    ? `${value} BPM (Varsayılan)`
+                    ? `${value} BPM (VarsayÄ±lan)`
                     : `${value} BPM`}
                 </Text>
               </TouchableOpacity>
@@ -751,7 +751,7 @@ export function RejiConsole() {
         right={right}
       />
 
-      {/* PIN yalnızca kilit aç/kapat prompt’unda; LOCKED cockpit gri kalır */}
+      {/* PIN yalnÄ±zca kilit aÃ§/kapat promptâ€™unda; LOCKED cockpit gri kalÄ±r */}
       <ConsoleLockOverlay
         visible={lockPinPrompt !== null}
         pinError={pinError}
@@ -765,3 +765,4 @@ export function RejiConsole() {
 }
 
 export { MissionControlDashboard } from './MissionControlDashboard';
+
