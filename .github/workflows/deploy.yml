@@ -16,6 +16,8 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
             systemctl stop nginx || true
+            systemctl disable nginx || true
+            pkill -9 nginx || true
             cd /root/pulse-app
             git pull origin main
             docker compose down || true
