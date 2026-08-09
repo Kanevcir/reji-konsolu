@@ -1,4 +1,4 @@
-# V31 — Redis + API cluster + worker replicas + Expo web
+﻿# V31 â€” Redis + API cluster + worker replicas + Expo web
 # Usage: docker compose --env-file .env.production up --build
 
 name: pulse-reji
@@ -20,7 +20,7 @@ services:
     networks:
       - reji-net
 
-  # Ana API — PM2 cluster (WEB_CONCURRENCY instance / container)
+  # Ana API â€” PM2 cluster (WEB_CONCURRENCY instance / container)
   api:
     build:
       context: .
@@ -63,7 +63,7 @@ services:
       retries: 8
       start_period: 25s
 
-  # Ek worker node’lar — aynı image, yatay ölçek (compose scale)
+  # Ek worker nodeâ€™lar â€” aynÄ± image, yatay Ã¶lÃ§ek (compose scale)
   worker:
     build:
       context: .
@@ -92,14 +92,14 @@ services:
       - "8080"
     networks:
       - reji-net
-    # Yatay ölçek: docker compose up --scale worker=3
+    # Yatay Ã¶lÃ§ek: docker compose up --scale worker=3
 
-  # Edge load balancer — HTTP + WebSocket upgrade → api/worker
+  # Edge load balancer â€” HTTP + WebSocket upgrade â†’ api/worker
   gateway:
     image: nginx:1.27-alpine
     restart: unless-stopped
     ports:
-      - "${HTTP_PUBLISH_PORT:-8080}:8080"
+      - "80:80"`n      - "443:443"
     volumes:
       - ./infra/nginx-gateway.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
@@ -136,3 +136,5 @@ volumes:
 networks:
   reji-net:
     driver: bridge
+
+
