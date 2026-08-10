@@ -1,9 +1,14 @@
 /**
- * V27.0 — Visual Slicer (Görsel Parçalayıcı).
- * Ana bayrak/logo/emoji bitmap’ini göndermek yerine;
- * cihazın (x,y) konumundaki tek pikseli / glyph parçası çözer.
+ * V30.0 — Visual Slicer (Görsel Parçalayıcı).
+ * Bitmap ağda taşınmaz; cihaz (x,y) → texture UV / formül ile tek piksel çözer.
  */
 
+import {
+  DEFAULT_FLAG_TEXTURE_ID,
+  ensureDefaultFlagTexture,
+  getAudienceTexture,
+  sampleAudienceMappedRgb,
+} from './audienceTexture';
 import {
   evaluatePixel,
   type MatrixCommand,
@@ -12,7 +17,6 @@ import {
   colorForOverlayEmoji,
   sampleClubCup,
   sampleOverlayGlyph,
-  sampleTurkishFlag,
   type PuzzlePresetId,
 } from './puzzleChoreography';
 import type { PixelCoord } from './seatPixelMap';
@@ -43,7 +47,6 @@ export type VisualSlicerInput = {
 
 /**
  * Reji MatrixCommand + koltuk koordinatı → cihaz lokal frame.
- * Ağda bitmap yok; formül/piksel istemci tarafında çözülür.
  */
 export function sliceVisualForDevice(input: VisualSlicerInput): SlicedPixelFrame {
   const { matrix, coord, nowMs } = input;
@@ -92,7 +95,6 @@ export function sliceVisualForDevice(input: VisualSlicerInput): SlicedPixelFrame
 
 /**
  * Birim test / debug — puzzle preset’i doğrudan örnekle (matrix bypass).
- * Örn. X:50 Y:50 bayrak rengi.
  */
 export function samplePuzzlePixelAt(
   preset: PuzzlePresetId,
@@ -101,6 +103,7 @@ export function samplePuzzlePixelAt(
   gridW: number,
   gridH: number,
   overlayEmoji: string | null = null,
+  textureId: string | null = null,
 ): { r: number; g: number; b: number; overlayGlyph: string | null } {
   const nx = (x + 0.5) / gridW;
   const ny = (y + 0.5) / gridH;
@@ -112,7 +115,10 @@ export function samplePuzzlePixelAt(
   }
 
   if (preset === 'turkish_flag') {
-    const [r, g, b] = sampleTurkishFlag(nx, ny);
+    const tex =
+      getAudienceTexture(textureId ?? DEFAULT_FLAG_TEXTURE_ID) ??
+      ensureDefaultFlagTexture();
+    const [r, g, b] = sampleAudienceMappedRgb(nx, ny, tex);
     return { r, g, b, overlayGlyph: null };
   }
   if (preset === 'club_cup') {

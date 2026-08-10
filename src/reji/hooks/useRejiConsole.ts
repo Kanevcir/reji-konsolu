@@ -148,6 +148,11 @@ import {
   type VisualThemeId,
 } from '../visualThemes';
 import {
+  DEFAULT_FLAG_TEXTURE_ID,
+  ensureDefaultFlagTexture,
+  registerTextureFromBlob,
+} from '../audienceTexture';
+import {
   micEnergyToWaveSync,
   type PuzzlePresetId,
 } from '../puzzleChoreography';
@@ -1889,6 +1894,9 @@ export function useRejiConsole() {
   const handlePuzzlePreset = (id: PuzzlePresetId) => {
     try {
       if (isConsoleLocked || isBlackout) return;
+      if (id === 'turkish_flag') {
+        ensureDefaultFlagTexture();
+      }
       setMatrixCommand((prev) => {
         const next = {
           ...prev,
@@ -1898,6 +1906,10 @@ export function useRejiConsole() {
               ? prev.overlayEmoji
               : null,
           engaged: id === 'none' ? prev.engaged : true,
+          textureId:
+            id === 'turkish_flag'
+              ? prev.textureId ?? DEFAULT_FLAG_TEXTURE_ID
+              : prev.textureId,
         };
         if (id !== 'none' && !prev.engaged) {
           next.t0 = Date.now();
@@ -1914,6 +1926,32 @@ export function useRejiConsole() {
       setBildirim(id === 'none' ? 'Puzzle kapalı' : 'PUZZLE · ' + id);
     } catch {
       pushLog('PUZZLE PRESET ERROR');
+    }
+  };
+
+  /** V30 — panelden 3:2 (veya herhangi) görsel → audience texture. */
+  const handleUploadAudienceTexture = async (file: File) => {
+    try {
+      if (isConsoleLocked || isBlackout) return;
+      const id = `upload_${Date.now()}`;
+      const tex = await registerTextureFromBlob(id, file, file.name);
+      setMatrixCommand((prev) => {
+        const next = {
+          ...prev,
+          puzzlePreset: 'turkish_flag' as PuzzlePresetId,
+          textureId: tex.id,
+          overlayEmoji: null,
+          engaged: true,
+          t0: prev.engaged ? prev.t0 : Date.now(),
+        };
+        queueMicrotask(() => publishLiveMatrixRef.current(next));
+        return next;
+      });
+      pushLog(`TEXTURE · ${tex.width}×${tex.height} · ${file.name}`);
+      setBildirim(`Texture · ${file.name}`);
+    } catch {
+      pushLog('TEXTURE UPLOAD ERROR');
+      setBildirim('Görsel yüklenemedi');
     }
   };
 
@@ -1969,6 +2007,7 @@ export function useRejiConsole() {
           audioDrive: matrixCommand.audioDrive,
           puzzlePreset: matrixCommand.puzzlePreset,
           overlayEmoji: matrixCommand.overlayEmoji,
+          textureId: matrixCommand.textureId,
           strobe: false,
           engaged: true,
         });
@@ -3073,6 +3112,7 @@ export function useRejiConsole() {
     handleThemeMixDelta,
     handleStrobeSensitivityDelta,
     handlePuzzlePreset,
+    handleUploadAudienceTexture,
     handleOverlayEmoji,
     handleMidiConnect,
     handleMidiBeginLearn,

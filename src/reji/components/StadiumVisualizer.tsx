@@ -1,5 +1,5 @@
 /**
- * V29.0 — Sanal Stadyum Simülatörü (Canvas 20k telefon).
+ * V30.0 — Sanal Stadyum Simülatörü (WebGL 50k point cloud).
  * PTP targetTimestamp ile Reji komutlarını uygular; rAF 60 FPS.
  */
 
@@ -15,6 +15,7 @@ import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ensureDefaultFlagTexture } from '../audienceTexture';
 import { scheduleAtPtp } from '../clientScheduler';
 import { getSyncedTimestamp } from '../clockSync';
 import { createIdleMatrixCommand } from '../pixelMapper';
@@ -24,7 +25,7 @@ import {
   type StadiumLiveFrame,
 } from '../stadiumLiveBus';
 import {
-  drawVisualizerFrame,
+  drawVisualizerFrame2d,
   StadiumVisualizerEngine,
   VISUALIZER_PHONE_COUNT,
 } from '../stadiumVisualizerEngine';
@@ -37,12 +38,15 @@ export function StadiumVisualizerScreen() {
   const [ready, setReady] = useState(false);
   const [phoneCount, setPhoneCount] = useState(VISUALIZER_PHONE_COUNT);
   const [hud, setHud] = useState('Bağlantı bekleniyor…');
+  const [renderMode, setRenderMode] = useState('…');
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') {
-      setHud('Simülatör web (Canvas) üzerinde çalışır');
+      setHud('Simülatör web (WebGL) üzerinde çalışır');
       return;
     }
+
+    ensureDefaultFlagTexture();
 
     const engine = new StadiumVisualizerEngine();
     setPhoneCount(engine.count);
@@ -61,9 +65,15 @@ export function StadiumVisualizerScreen() {
     host.innerHTML = '';
     host.appendChild(canvas);
 
-    const gridCanvas = document.createElement('canvas');
-    gridCanvas.width = 200;
-    gridCanvas.height = 200;
+    const mode = engine.attachCanvas(canvas);
+    setRenderMode(mode === 'webgl' ? 'WebGL' : 'Canvas2D');
+
+    const ctx2d =
+      mode === 'canvas2d' ? canvas.getContext('2d') : null;
+    if (mode === 'canvas2d' && !ctx2d) {
+      setHud('Canvas context yok');
+      return;
+    }
 
     const resize = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -78,14 +88,8 @@ export function StadiumVisualizerScreen() {
     resize();
     window.addEventListener('resize', resize);
 
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      setHud('2D context yok');
-      return;
-    }
-
     setReady(true);
-    setHud(`Hazır · ${engine.count} telefon`);
+    setHud(`Hazır · ${engine.count.toLocaleString('tr-TR')} telefon · ${mode}`);
 
     const applyFrame = (frame: StadiumLiveFrame) => {
       cancelScheduleRef.current?.();
@@ -131,19 +135,25 @@ export function StadiumVisualizerScreen() {
       engine.applyMatrixNow(
         createIdleMatrixCommand({
           engaged: true,
+          puzzlePreset: 'turkish_flag',
+          textureId: 'turkish_flag_default',
           effect: 'RADIAL_WAVE',
           themeMix: 0,
           speed: 1,
         }),
       );
-      setHud('DEMO WAVE · Reji komutu bekleniyor');
+      setHud('DEMO FLAG · Reji komutu bekleniyor');
     }
 
     const unsub = subscribeStadiumLive(applyFrame);
 
     const loop = () => {
       engine.tick(getSyncedTimestamp());
-      drawVisualizerFrame(ctx, engine, gridCanvas);
+      if (mode === 'webgl') {
+        engine.drawWebGl(canvas);
+      } else if (ctx2d) {
+        drawVisualizerFrame2d(ctx2d, engine);
+      }
       rafRef.current = requestAnimationFrame(loop);
     };
     rafRef.current = requestAnimationFrame(loop);
@@ -168,9 +178,10 @@ export function StadiumVisualizerScreen() {
           <Text style={styles.backText}>← REJİ</Text>
         </TouchableOpacity>
         <View style={styles.titleBlock}>
-          <Text style={styles.title}>SANAL STADYUM SİMÜLATÖRÜ</Text>
+          <Text style={styles.title}>SANAL STADYUM · V30 · 50K WEBGL</Text>
           <Text style={styles.sub}>
-            {phoneCount.toLocaleString('tr-TR')} telefon · Canvas · PTP
+            {phoneCount.toLocaleString('tr-TR')} telefon · {renderMode} · texture
+            UV unwrap
           </Text>
         </View>
         <View style={styles.badge}>
@@ -189,7 +200,7 @@ export function StadiumVisualizerScreen() {
       ) : (
         <View style={styles.fallback}>
           <Text style={styles.fallbackText}>
-            Stadyum simülatörü performans için web Canvas gerektirir. Tarayıcıda
+            Stadyum simülatörü performans için web WebGL gerektirir. Tarayıcıda
             /simulator yolunu açın.
           </Text>
         </View>

@@ -9,12 +9,17 @@
  * V25.0 — waveAmplitude / audioDrive + puzzle overlay (bayrak/kupa/emoji).
  */
 
+import {
+  DEFAULT_FLAG_TEXTURE_ID,
+  ensureDefaultFlagTexture,
+  getAudienceTexture,
+  sampleAudienceMappedRgb,
+} from './audienceTexture';
 import { getSyncedTimestamp } from './clockSync';
 import {
   colorForOverlayEmoji,
   sampleClubCup,
   sampleOverlayGlyph,
-  sampleTurkishFlag,
   type PuzzlePresetId,
 } from './puzzleChoreography';
 import {
@@ -79,6 +84,11 @@ export type MatrixCommand = {
    * null = overlay kapalı.
    */
   overlayEmoji: string | null;
+  /**
+   * V30 — Audience texture id (bitmap UV). Piksel verisi local store’da;
+   * komutla yalnızca id taşınır. turkish_flag için varsayılan bake kullanılır.
+   */
+  textureId: string | null;
 };
 
 export const MATRIX_EFFECTS: readonly MatrixEffect[] = [
@@ -133,6 +143,7 @@ export function createIdleMatrixCommand(
     audioDrive: 0,
     puzzlePreset: 'none',
     overlayEmoji: null,
+    textureId: null,
   };
   if (!partial) return base;
   const nextBase = clamp(
@@ -158,6 +169,8 @@ export function createIdleMatrixCommand(
     puzzlePreset: partial.puzzlePreset ?? 'none',
     overlayEmoji:
       partial.overlayEmoji === undefined ? null : partial.overlayEmoji,
+    textureId:
+      partial.textureId === undefined ? null : partial.textureId,
   };
 }
 
@@ -178,6 +191,7 @@ export function buildMatrixCommand(input: {
   audioDrive?: number;
   puzzlePreset?: PuzzlePresetId;
   overlayEmoji?: string | null;
+  textureId?: string | null;
 }): MatrixCommand {
   const themeMix = clamp(input.themeMix ?? DEFAULT_THEME_MIX, 0, 1);
   const theme = interpolateTheme(themeMix);
@@ -203,6 +217,7 @@ export function buildMatrixCommand(input: {
     audioDrive: clamp(input.audioDrive ?? 0, 0, 1),
     puzzlePreset: input.puzzlePreset ?? 'none',
     overlayEmoji: input.overlayEmoji ?? null,
+    textureId: input.textureId ?? null,
   });
 }
 
@@ -304,10 +319,17 @@ export function evaluatePixel(
       return colorForOverlayEmoji(overlay, lit);
     }
 
-    // V25 — puzzle preset (bayrak / kupa)
+    // V30 — audience texture UV (bayrak / yüklenen görsel)
     const preset = cmd.puzzlePreset ?? 'none';
     if (preset === 'turkish_flag') {
-      return sampleTurkishFlag(nx, ny);
+      const texId = cmd.textureId ?? DEFAULT_FLAG_TEXTURE_ID;
+      const tex =
+        getAudienceTexture(texId) ??
+        (texId === DEFAULT_FLAG_TEXTURE_ID
+          ? ensureDefaultFlagTexture()
+          : null) ??
+        ensureDefaultFlagTexture();
+      return sampleAudienceMappedRgb(nx, ny, tex);
     }
     if (preset === 'club_cup') {
       return sampleClubCup(nx, ny);

@@ -1,11 +1,15 @@
 /**
- * V27.0 — Seat & Pixel Mapping oto-simülasyon (10.000 mock client).
+ * V30.0 — Seat & Pixel Mapping + Texture UV oto-simülasyon.
  *
  * Çalıştır: npm run test:mapping
  */
 
+import {
+  DEFAULT_FLAG_TEXTURE_ID,
+  ensureDefaultFlagTexture,
+  sampleAudienceMappedRgb,
+} from '../audienceTexture';
 import { createIdleMatrixCommand } from '../pixelMapper';
-import { sampleTurkishFlag } from '../puzzleChoreography';
 import {
   enumerateUniqueTickets,
   SeatOnboardingAuth,
@@ -14,6 +18,7 @@ import {
   ticketFromLabels,
   TRIBUNE_BANDS,
 } from '../seatPixelMap';
+import { stadiumToTextureUv } from '../tribuneUnwrap';
 import {
   rgbEquals,
   samplePuzzlePixelAt,
@@ -74,7 +79,6 @@ function test10kUniqueMapping(): SimResult {
   assert(pixelKeys.size === N, `unique pixels ${pixelKeys.size}`);
   assert(seatKeys.size === N, `unique seats ${seatKeys.size}`);
 
-  // Determinism: same ticket → same XY
   const sample = tickets[1234]!;
   const a = seatToPixel(sample);
   const b = seatToPixel(sample);
@@ -106,50 +110,61 @@ function testCollisionRejection(): SimResult {
   };
 }
 
-function testVisualSlicerFlagAt50_50(): SimResult {
-  const x = 50;
-  const y = 50;
-  const gridW = 200;
-  const gridH = 200;
-  const nx = (x + 0.5) / gridW;
-  const ny = (y + 0.5) / gridH;
+function testTextureUvFlagOnTribune(): SimResult {
+  const tex = ensureDefaultFlagTexture();
+  assert(tex.id === DEFAULT_FLAG_TEXTURE_ID, 'default id');
+  assert(Math.abs(tex.aspect - 1.5) < 0.01, `aspect ${tex.aspect} != 1.5`);
 
-  const expected = sampleTurkishFlag(nx, ny);
-  const sampled = samplePuzzlePixelAt('turkish_flag', x, y, gridW, gridH);
+  // Pitch merkezi → UV yok
+  const pitchUv = stadiumToTextureUv(0.5, 0.5, tex.aspect);
+  assert(pitchUv == null, 'pitch should not map to texture');
+
+  // Batı tribün (hilal tarafı) → texture örneklenmeli
+  const west = seatToPixel({
+    tribune: 'WEST',
+    block: 1,
+    row: 12,
+    seat: 10,
+  });
+  const uv = stadiumToTextureUv(west.nx, west.ny, tex.aspect);
+  assert(uv != null, 'west seat must have texture UV');
+
+  const rgb = sampleAudienceMappedRgb(west.nx, west.ny, tex);
+  assert(rgb[0] + rgb[1] + rgb[2] > 0, 'west sample dark');
+
+  const sampled = samplePuzzlePixelAt(
+    'turkish_flag',
+    west.x,
+    west.y,
+    200,
+    200,
+  );
   assert(
-    rgbEquals(sampled, { r: expected[0], g: expected[1], b: expected[2] }),
-    `flag sample mismatch got ${sampled.r},${sampled.g},${sampled.b} expected ${expected}`,
+    rgbEquals(sampled, { r: rgb[0], g: rgb[1], b: rgb[2] }),
+    `slicer mismatch ${sampled.r},${sampled.g},${sampled.b}`,
   );
 
   const matrix = createIdleMatrixCommand({
     engaged: true,
     puzzlePreset: 'turkish_flag',
+    textureId: DEFAULT_FLAG_TEXTURE_ID,
     overlayEmoji: null,
   });
-  const coord = {
-    x,
-    y,
-    nx,
-    ny,
-    gridW,
-    gridH,
-  };
   const frame = sliceVisualForDevice({
     matrix,
-    coord,
+    coord: west,
     nowMs: matrix.t0,
   });
-  assert(
-    rgbEquals(frame, { r: expected[0], g: expected[1], b: expected[2] }),
-    `slicer mismatch ${frame.r},${frame.g},${frame.b}`,
-  );
   assert(frame.puzzlePreset === 'turkish_flag', 'preset');
-  assert(frame.x === 50 && frame.y === 50, 'coord echo');
+  assert(
+    rgbEquals(frame, { r: rgb[0], g: rgb[1], b: rgb[2] }),
+    `evaluate mismatch ${frame.r},${frame.g},${frame.b}`,
+  );
 
   return {
-    name: 'Visual slicer unit (X:50 Y:50 Turkish Flag)',
+    name: 'Texture UV flag on tribune (not pitch)',
     ok: true,
-    detail: `rgb(${frame.r},${frame.g},${frame.b}) lit=${frame.lit}`,
+    detail: `west(${west.x},${west.y}) uv=(${uv!.u.toFixed(3)},${uv!.v.toFixed(3)}) rgb(${frame.r},${frame.g},${frame.b})`,
   };
 }
 
@@ -162,7 +177,6 @@ function testVisualSlicerCupAndGol(): SimResult {
     puzzlePreset: 'live_emoji',
     overlayEmoji: 'GOL',
   });
-  // Center-ish cell for GOL glyph
   let litGlyph = 0;
   let dark = 0;
   for (let y = 60; y < 140; y += 4) {
@@ -194,10 +208,11 @@ function testVisualSlicerCupAndGol(): SimResult {
 }
 
 function testSlicerDoesNotSendFullBitmap(): SimResult {
-  // Frame boyutu sabit — tam grid değil (sadece 1 piksel meta)
+  ensureDefaultFlagTexture();
   const matrix = createIdleMatrixCommand({
     engaged: true,
     puzzlePreset: 'turkish_flag',
+    textureId: DEFAULT_FLAG_TEXTURE_ID,
   });
   const frame = sliceVisualForDevice({
     matrix,
@@ -225,12 +240,12 @@ function main() {
     testTicketParsing,
     test10kUniqueMapping,
     testCollisionRejection,
-    testVisualSlicerFlagAt50_50,
+    testTextureUvFlagOnTribune,
     testVisualSlicerCupAndGol,
     testSlicerDoesNotSendFullBitmap,
   ];
 
-  console.log('\n=== V27 Seat & Pixel Mapping Simulation ===\n');
+  console.log('\n=== V30 Seat Mapping + Texture UV Simulation ===\n');
   let failed = 0;
   for (const t of tests) {
     try {

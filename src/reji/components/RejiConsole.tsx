@@ -158,6 +158,7 @@ export function RejiConsole() {
     handleThemeMixDelta,
     handleStrobeSensitivityDelta,
     handlePuzzlePreset,
+    handleUploadAudienceTexture,
     handleOverlayEmoji,
     midiStatus,
     handleMidiConnect,
@@ -475,9 +476,11 @@ export function RejiConsole() {
         waveAmplitude={matrixCommand.waveAmplitude ?? 1}
         audioDrive={matrixCommand.audioDrive ?? 0}
         audioListening={isListeningAudio}
+        textureLabel={matrixCommand.textureId ?? null}
         disabled={isBlackout || isConsoleLocked}
         onSelectPreset={handlePuzzlePreset}
         onOverlayEmoji={handleOverlayEmoji}
+        onUploadTexture={handleUploadAudienceTexture}
       />
 
       <VirtualCrowdPanel payload={lastPayload} />

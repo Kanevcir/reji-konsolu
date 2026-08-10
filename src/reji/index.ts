@@ -89,6 +89,7 @@ export {
   StadiumVisualizerEngine,
   buildVisualizerPhones,
   drawVisualizerFrame,
+  drawVisualizerFrame2d,
   VISUALIZER_PHONE_COUNT,
 } from './stadiumVisualizerEngine';
 export type { VisualizerPhone } from './stadiumVisualizerEngine';
@@ -377,10 +378,28 @@ export {
   OVERLAY_EMOJI_QUICK,
   formatPuzzlePresetLabel,
   micEnergyToWaveSync,
-  sampleTurkishFlag,
   sampleClubCup,
 } from './puzzleChoreography';
 export type { PuzzlePresetId, PuzzlePreset } from './puzzleChoreography';
+export {
+  DEFAULT_FLAG_TEXTURE_ID,
+  bakeTurkishFlagTexture,
+  ensureDefaultFlagTexture,
+  getAudienceTexture,
+  registerAudienceTexture,
+  registerTextureFromBlob,
+  registerTextureFromDrawable,
+  registerTextureFromRgba,
+  sampleAudienceMappedRgb,
+  sampleTextureRgb,
+} from './audienceTexture';
+export type { AudienceTexture } from './audienceTexture';
+export {
+  stadiumToTextureUv,
+  coverSquareToTextureUv,
+  isInTribuneBandUv,
+  pitchHoleNorm,
+} from './tribuneUnwrap';
 export {
   MIDI_LEARN_TARGETS,
   DEFAULT_MIDI_BINDINGS,

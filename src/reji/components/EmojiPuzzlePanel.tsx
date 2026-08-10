@@ -1,9 +1,15 @@
 /**
- * V25.0 — Koreografi & Emoji Puzzle kontrol paneli.
+ * V30.0 — Koreografi & Emoji Puzzle kontrol paneli.
+ * Türk Bayrağı: 3:2 texture yükleme + tribün unwrap.
  */
 
-import { memo } from 'react';
-import { Text, TouchableOpacity, View } from 'react-native';
+import { memo, useRef } from 'react';
+import {
+  Platform,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 
 import {
   formatPuzzlePresetLabel,
@@ -19,9 +25,11 @@ type Props = {
   waveAmplitude: number;
   audioDrive: number;
   audioListening: boolean;
+  textureLabel?: string | null;
   disabled?: boolean;
   onSelectPreset: (id: PuzzlePresetId) => void;
   onOverlayEmoji: (glyph: string | null) => void;
+  onUploadTexture?: (file: File) => void;
 };
 
 function EmojiPuzzlePanelComponent({
@@ -30,18 +38,23 @@ function EmojiPuzzlePanelComponent({
   waveAmplitude,
   audioDrive,
   audioListening,
+  textureLabel,
   disabled = false,
   onSelectPreset,
   onOverlayEmoji,
+  onUploadTexture,
 }: Props) {
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
   return (
     <View style={styles.puzzleCard}>
       <Text style={styles.sectionLabel}>KOREOGRAFİ & EMOJI MODU</Text>
       <Text style={styles.puzzleHint}>
         {puzzlePreset === 'none'
-          ? 'Preset seç · OVERLAY_EMOJI ile anlık dönüşüm'
+          ? 'Preset seç · 3:2 görsel yükle · OVERLAY_EMOJI'
           : formatPuzzlePresetLabel(puzzlePreset)}
         {overlayEmoji ? ` · OVERLAY ${overlayEmoji}` : ''}
+        {textureLabel ? ` · TEX ${textureLabel}` : ''}
       </Text>
 
       <View style={styles.puzzlePresetCol}>
@@ -74,6 +87,38 @@ function EmojiPuzzlePanelComponent({
           );
         })}
       </View>
+
+      {Platform.OS === 'web' && onUploadTexture ? (
+        <TouchableOpacity
+          accessibilityRole="button"
+          disabled={disabled}
+          activeOpacity={0.75}
+          onPress={() => {
+            const input = fileRef.current;
+            if (input) input.click();
+          }}
+          style={[
+            styles.puzzleClearBtn,
+            disabled && styles.controlDisabled,
+            { marginBottom: 10 },
+          ]}>
+          <Text style={styles.puzzleClearText}>
+            3:2 GÖRSEL YÜKLE (TEXTURE UV)
+          </Text>
+          {/* eslint-disable-next-line react/forbid-elements */}
+          <input
+            ref={fileRef as never}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) onUploadTexture(file);
+              e.target.value = '';
+            }}
+          />
+        </TouchableOpacity>
+      ) : null}
 
       <Text style={styles.puzzleSectionTitle}>OVERLAY EMOJI / METİN</Text>
       <View style={styles.puzzleEmojiRow}>

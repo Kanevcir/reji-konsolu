@@ -1,7 +1,7 @@
 /**
- * V25.0 — Koreografi & Emoji Puzzle Engine.
- * Dev Türk Bayrağı, kulüp kupası ve canlı emoji/metin overlay’leri;
- * stadyum grid’inde telefonlara bölünmüş prosedürel desenler.
+ * V30.0 — Koreografi & Emoji Puzzle Engine.
+ * Türk Bayrağı / audience map: gerçek texture UV (bitmap).
+ * Kulüp kupası ve overlay hâlâ prosedürel glyph.
  */
 
 export type PuzzlePresetId =
@@ -20,7 +20,7 @@ export const PUZZLE_PRESETS: readonly PuzzlePreset[] = [
   {
     id: 'turkish_flag',
     label: 'Dev Türk Bayrağı',
-    hint: 'Kırmızı zemin · hilal & yıldız — grid telefonlara bölünür',
+    hint: '3:2 texture UV · tribün halkası unwrap (ay/yıldız koltuklarda)',
   },
   {
     id: 'club_cup',
@@ -112,48 +112,6 @@ export function sampleOverlayGlyph(
   const rowBits = rowsBits[cy];
   if (rowBits == null) return false;
   return ((rowBits >> (4 - localX)) & 1) === 1;
-}
-
-/** Dev Türk Bayrağı — kırmızı zemin, beyaz hilal + yıldız. */
-export function sampleTurkishFlag(
-  nx: number,
-  ny: number,
-): [number, number, number] {
-  const RED: [number, number, number] = [227, 10, 23];
-  const WHITE: [number, number, number] = [255, 255, 255];
-
-  // Hilal merkezi (bayrak oranına yakın)
-  const cx = 0.38;
-  const cy = 0.5;
-  const rOuter = 0.22;
-  const rInner = 0.17;
-  const ox = cx + 0.06;
-  const dx = nx - cx;
-  const dy = ny - cy;
-  const dOuter = Math.sqrt(dx * dx + dy * dy);
-  const dInner = Math.sqrt((nx - ox) * (nx - ox) + dy * dy);
-  const inCrescent = dOuter <= rOuter && dInner > rInner;
-
-  // 5 köşeli yıldız (yaklaşık)
-  const sx = 0.55;
-  const sy = 0.5;
-  const starR = 0.07;
-  const sdx = nx - sx;
-  const sdy = ny - sy;
-  const ang = Math.atan2(sdy, sdx);
-  const dist = Math.sqrt(sdx * sdx + sdy * sdy);
-  const starEdge =
-    starR *
-    (0.55 +
-      0.45 *
-        Math.max(
-          0,
-          Math.cos(ang * 5) * 0.5 + 0.5,
-        ));
-  const inStar = dist <= starEdge;
-
-  if (inCrescent || inStar) return WHITE;
-  return RED;
 }
 
 /** Kulüp kupası / logo — altın kupa + kaide. */

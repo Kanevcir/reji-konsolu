@@ -1,6 +1,6 @@
 /**
  * V20.0 — CHOREOGRAPHY & PIXEL MATRIX paneli.
- * Web: HTML5 Canvas 60FPS. Native: 32² setNativeProps (~30FPS).
+ * Web: HTML5 Canvas 60FPS (200x200 40K HD Matrix).
  */
 
 import { memo, useEffect, useRef, useState } from 'react';
@@ -17,7 +17,6 @@ import {
   fillPreviewBuffer,
   formatMatrixEffectLabel,
   MATRIX_EFFECTS,
-  PREVIEW_GRID,
   type MatrixCommand,
 } from '../pixelMapper';
 import { rejiStyles as styles } from '../styles';
@@ -50,8 +49,9 @@ function WebCanvasPreview({
     const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) return;
 
-    const pw = PREVIEW_GRID;
-    const ph = PREVIEW_GRID;
+    // HD 40K ÇÖZÜNÜRLÜK (200x200 = 40.000 Piksel)
+    const pw = 200;
+    const ph = 200;
     const buffer = new Uint8ClampedArray(pw * ph * 4);
     const off = document.createElement('canvas');
     off.width = pw;
@@ -69,10 +69,15 @@ function WebCanvasPreview({
         const imageData = octx.createImageData(pw, ph);
         imageData.data.set(buffer);
         octx.putImageData(imageData, 0, 0);
-        ctx.imageSmoothingEnabled = false;
+        
+        ctx.imageSmoothingEnabled = true;
         ctx.fillStyle = '#020617';
         ctx.fillRect(0, 0, width, height);
-        ctx.drawImage(off, 0, 0, width, height);
+        // Kare UV önizleme — anizotropik gerdirme yok
+        const side = Math.min(width, height);
+        const ox = (width - side) / 2;
+        const oy = (height - side) / 2;
+        ctx.drawImage(off, ox, oy, side, side);
       } catch {
         // frame skip
       }
@@ -87,7 +92,7 @@ function WebCanvasPreview({
   }, [width, height]);
 
   return (
-    // eslint-disable-next-line react/forbid-elements -- V20 HTML5 canvas (web)
+    // eslint-disable-next-line react/forbid-elements
     <canvas
       ref={canvasRef as never}
       width={Math.max(1, Math.floor(width))}
@@ -103,7 +108,8 @@ function WebCanvasPreview({
 }
 
 function NativeGridPreview({ cmd }: { cmd: MatrixCommand }) {
-  const size = 32;
+  // Uyarı: Mobil (Native) tarafta 40.000 View kasmaması için bunu şimdilik 64 yapıyoruz
+  const size = 64; 
   const cellRefs = useRef<Array<View | null>>([]);
   const cmdRef = useRef(cmd);
   cmdRef.current = cmd;
