@@ -5,20 +5,36 @@
  *
  * Not: seatPixelMap / pixelMapper ile döngü olmaması için band
  * dikdörtgenleri burada kopyalanır (TRIBUNE_BANDS ile senkron tut).
+ *
+ * Faz 3 / T-058: 400×400 grid, 70k kapasite (4×17.500),
+ * polarite tPolar=1-t, ay-yıldız odağı FLAG_EMBLEM_FOCUS.
  */
 
-/** pixelMapper ile döngüyü önlemek için yerel varsayılan (200×200). */
-const DEFAULT_GRID_W = 200;
-const DEFAULT_GRID_H = 200;
+/** pixelMapper ile döngüyü önlemek için yerel varsayılan (400×400). */
+const DEFAULT_GRID_W = 400;
+const DEFAULT_GRID_H = 400;
+
+/** Toplam stadyum telefon kapasitesi (4 tribün × 17.500). */
+export const STADIUM_PHONE_CAPACITY = 70_000;
+export const TRIBUNE_BAND_CAPACITY = 17_500;
+
+/**
+ * Türk bayrağı ay-yıldız odak noktası (normalize 0–1, texture UV).
+ * Sola kaydırıldı — ay/yıldızın sahaya düşmesini engeller.
+ */
+export const FLAG_EMBLEM_FOCUS = { x: 0.389, y: 0.5 } as const;
 
 type BandRect = { x0: number; x1: number; y0: number; y1: number };
 
-/** seatPixelMap.TRIBUNE_BANDS ile aynı geometri. */
+/**
+ * seatPixelMap.TRIBUNE_BANDS ile aynı geometri (400×400).
+ * E/W bantları ≥17.500 piksel olacak şekilde genişletildi.
+ */
 const BAND_RECTS: BandRect[] = [
-  { x0: 40, x1: 159, y0: 0, y1: 49 }, // NORTH
-  { x0: 40, x1: 159, y0: 150, y1: 199 }, // SOUTH
-  { x0: 160, x1: 199, y0: 50, y1: 149 }, // EAST
-  { x0: 0, x1: 39, y0: 50, y1: 149 }, // WEST
+  { x0: 75, x1: 324, y0: 0, y1: 99 }, // NORTH — 250×100=25.000
+  { x0: 75, x1: 324, y0: 300, y1: 399 }, // SOUTH
+  { x0: 325, x1: 399, y0: 75, y1: 324 }, // EAST — 75×250=18.750
+  { x0: 0, x1: 74, y0: 75, y1: 324 }, // WEST
 ];
 
 export type TextureUv = { u: number; v: number };
@@ -129,7 +145,8 @@ export function coverSquareToTextureUv(
 
 /**
  * Stadyum UV → texture UV (tribün halkası squash + cover).
- * t=0 (saha kenarı) → görsel merkezi; t=1 (dış kenar) → görsel kenarı.
+ * Polarite: tPolar = 1 - t (iç kenar → ay/yıldız odağı civarı).
+ * Odak: FLAG_EMBLEM_FOCUS (x=0.389) — sahaya kaymayı önler.
  */
 export function stadiumToTextureUv(
   nx: number,
@@ -144,7 +161,7 @@ export function stadiumToTextureUv(
   const dy = ny - 0.5;
   const r = Math.hypot(dx, dy);
   if (r < 1e-9) {
-    return coverSquareToTextureUv(0.5, 0.5, texAspect);
+    return coverSquareToTextureUv(FLAG_EMBLEM_FOCUS.x, FLAG_EMBLEM_FOCUS.y, texAspect);
   }
 
   const angle = Math.atan2(dy, dx);
@@ -152,10 +169,11 @@ export function stadiumToTextureUv(
   if (r < rIn - 1e-6) return null;
 
   const t = clamp01((r - rIn) / Math.max(1e-9, rOut - rIn));
+  const tPolar = 1 - t;
   const ux = dx / r;
   const uy = dy / r;
 
-  const sx = 0.5 + ux * t * 0.5;
-  const sy = 0.5 + uy * t * 0.5;
+  const sx = FLAG_EMBLEM_FOCUS.x + ux * tPolar * 0.5;
+  const sy = FLAG_EMBLEM_FOCUS.y + uy * tPolar * 0.5;
   return coverSquareToTextureUv(sx, sy, texAspect);
 }
